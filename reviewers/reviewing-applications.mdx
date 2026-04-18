@@ -1,0 +1,143 @@
+---
+title: "Score and submit an application review"
+description: "Open an assigned application, fill out all rubric scores and notes in the split-pane review page, and submit your review when complete."
+---
+
+Each application assigned to you appears in the **Assigned Applications** tab of your dashboard. Clicking a row opens the review page at `/admin/review/f/:formId/:responseId/:sectionId/:reviewDataId`, where you can read the applicant's responses on the left and fill in your scores on the right. The page saves your notes automatically as you type.
+
+## Opening an assigned application
+
+From the **Assigned Applications** tab, find the application you want to review in the table. Click the row to open the review page for that application and role. The URL includes:
+
+- `formId` — the active application form
+- `responseId` — the `ApplicationResponse` submitted by the applicant
+- `reviewDataId` — your `ApplicationReviewData` record for this assignment
+
+<Note>
+  Each reviewer gets a separate `ApplicationReviewData` record per application-role pair. Reviewing the same applicant for a different role creates a distinct record.
+</Note>
+
+## The review page layout
+
+The review page splits into two resizable panels. Drag the divider between them to resize.
+
+<CardGroup cols={2}>
+  <Card title="Left panel — application" icon="file">
+    Displays the applicant's read-only form responses, section by section. Sections marked `hideFromReviewers` are hidden. Role-specific sections only appear for the roles the applicant applied to.
+  </Card>
+  <Card title="Right panel — rubric" icon="list-checks">
+    Contains one or more rubric cards with score inputs and comment fields for each rubric question. This is where you enter your evaluation.
+  </Card>
+</CardGroup>
+
+Press `Cmd+K` (or `Ctrl+K`) to open the section jump palette and scroll directly to any form section by name.
+
+## Understanding the rubric
+
+Rubrics are stored as `RoleReviewRubric` objects. Each rubric applies to one or more roles and contains a list of `ReviewRubricQuestion` items:
+
+```typescript types.ts
+export type RoleReviewRubric = {
+  id: string;
+  formId: string;
+  roles: ApplicantRole[];
+  rubricQuestions: ReviewRubricQuestion[];
+  detailLink?: string;
+  commentsDescription?: string;
+};
+
+export type ReviewRubricQuestion = {
+  scoreKey: string;
+  prompt: string;
+  description?: string;
+  maxValue?: number; // defaults to 4
+  minValue?: number; // defaults to 0
+};
+```
+
+Each question has a `scoreKey` that uniquely identifies the criterion. Your score for that criterion is stored under that same key in `applicantScores`, and any notes you write are stored under the same key in `reviewerNotes`.
+
+When multiple rubrics exist for a role, they are sorted so role-specific rubrics (fewer `roles` entries) appear before shared rubrics.
+
+## Filling in scores and notes
+
+For each `ReviewRubricQuestion`:
+
+1. Select a numeric score within the question's `minValue`–`maxValue` range (default 0–4).
+2. Optionally type a note in the comment field below the score.
+
+Notes autosave one second after you stop typing. The header bar shows either **Last saved [time]** or **Not saved** to indicate autosave status.
+
+<Warning>
+  Scores are not autosaved — only notes are. If you navigate away before submitting, your score selections may be lost. Submit the review when you are done.
+</Warning>
+
+## The `ApplicationReviewData` structure
+
+Your scores and notes are stored in a single `ApplicationReviewData` document:
+
+```typescript types.ts
+export interface ApplicationReviewData {
+  id: string;
+  reviewerId: string;
+  applicationFormId: string;
+  applicationResponseId: string;
+  applicantId: string;
+  applicantScores: Record<string, number>;  // keyed by scoreKey
+  reviewerNotes: Record<string, string>;    // keyed by scoreKey
+  forRole: ApplicantRole;
+  submitted: boolean;
+}
+```
+
+The `id` is composed as `{reviewerId}_{applicationResponseId}_{forRole}`, ensuring one record per reviewer-application-role combination.
+
+## Review status values
+
+The portal uses `ReviewStatus` to track where an application is in the pipeline. The statuses most relevant to you as a reviewer are:
+
+| Status | Value | Meaning |
+| --- | --- | --- |
+| `NotReviewed` | `"not-reviewed"` | No reviewer has submitted a review yet |
+| `UnderReview` | `"under-review"` | At least one review is in progress |
+| `Reviewed` | `"reviewed"` | All reviews have been submitted |
+| `Interview` | `"interview"` | Applicant has advanced to interview stage |
+
+```typescript types.ts
+export enum ReviewStatus {
+  NotReviewed = "not-reviewed",
+  UnderReview = "under-review",
+  Reviewed = "reviewed",
+  Interview = "interview",
+  Accepted = "accepted",
+  Denied = "denied",
+  Waitlisted = "waitlist",
+}
+```
+
+## Submitting the review
+
+When you have scored every rubric question, click **Submit Review** in the header bar. A confirmation dialog appears before the review is finalized.
+
+<Steps>
+  <Step title="Complete all scores">
+    Every `scoreKey` from every rubric question must have a value in `applicantScores`. If any key is missing, the portal shows an error toast and blocks submission.
+  </Step>
+  <Step title="Click Submit Review">
+    Click the **Submit Review** button in the blue header bar at the top of the page.
+  </Step>
+  <Step title="Confirm in the dialog">
+    Read the confirmation message — "You will not be able to edit it after submission" — then click **Confirm**.
+  </Step>
+  <Step title="Review saved">
+    A success toast appears and the portal navigates back to your dashboard. The application now shows as reviewed in the summary cards.
+  </Step>
+</Steps>
+
+<Warning>
+  Submission is permanent. Once `submitted` is set to `true`, the score inputs and comment fields become disabled. Contact a super reviewer if you need to correct a submitted review.
+</Warning>
+
+## Internal applicants
+
+If the applicant has `isInternal: true` on their profile (a returning club member reapplying), the header bar displays an **INTERNAL** badge next to the applicant's name. Internal applicants typically skip the standard review and proceed directly to interview, so you may see them in the interviews tab rather than the applications tab.

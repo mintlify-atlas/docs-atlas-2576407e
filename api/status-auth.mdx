@@ -1,0 +1,271 @@
+---
+title: "Status and Auth API endpoints"
+description: "Retrieve per-role application status, confirm acceptance decisions, register new users, update profiles, and create internal applicant records."
+---
+
+The status routes allow applicants to check where their application stands in the review pipeline and to confirm an acceptance decision. The auth routes handle user account creation and profile updates for all user types, including a special path for creating internal applicants who bypass the standard review process.
+
+---
+
+## GET /status/:responseId/:role
+
+Returns the review status for a specific application response and role. The caller must own the response. The response shape depends on whether the form's `decisionsReleased` flag is `true`.
+
+**Authentication:** `isAuthenticated` (applicant-only by ownership check in handler)
+
+### Path parameters
+
+<ParamField path="responseId" type="string" required>
+  The ID of the application response to look up.
+</ParamField>
+
+<ParamField path="role" type="string" required>
+  The applicant role to retrieve status for, e.g. `engineer` or `designer`.
+</ParamField>
+
+### Response when decisions are not yet released
+
+When `decisionsReleased` is `false` on the parent form, the full internal status is hidden. The `status` field is mapped to a coarser public value:
+
+| Internal `ReviewStatus` | Public status returned |
+|------------------------|----------------------|
+| `interview` | `"interview"` |
+| `accepted`, `waitlist`, or `denied` | `"decided"` |
+| Any other value (e.g. `under-review`) | `"under-review"` |
+
+<ResponseField name="id" type="string">ID of the status document.</ResponseField>
+<ResponseField name="status" type="string">One of `"under-review"`, `"interview"`, or `"decided"`.</ResponseField>
+<ResponseField name="role" type="string">The role this status applies to.</ResponseField>
+<ResponseField name="released" type="boolean">`false`.</ResponseField>
+
+### Response when decisions are released
+
+When `decisionsReleased` is `true`, the full `ReviewStatus` value is returned.
+
+<ResponseField name="id" type="string">ID of the status document.</ResponseField>
+<ResponseField name="status" type="string">
+  The full `ReviewStatus` value: one of `not-reviewed`, `under-review`, `reviewed`, `interview`, `accepted`, `denied`, or `waitlist`.
+</ResponseField>
+<ResponseField name="role" type="string">The role this status applies to.</ResponseField>
+<ResponseField name="released" type="boolean">`true`.</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 401 | The token's `sub` does not match the `userId` on the response document. |
+| 404 | The application response or its status document was not found. |
+
+---
+
+## POST /status/decision
+
+Records an applicant's acceptance confirmation. The request is validated to ensure the user owns the response, that a decision exists for the given `internalStatusId`, and that the decision is `"accepted"`. Only one confirmation may be submitted per `responseId`.
+
+**Authentication:** `isAuthenticated` · **Role:** `applicant`
+
+### Request body
+
+<ParamField body="status" type="string" required>
+  The decision being confirmed. Must be `"accepted"` or `"denied"`.
+</ParamField>
+
+<ParamField body="userId" type="string" required>
+  The UID of the applicant confirming the decision. Must match the authenticated token's `uid`.
+</ParamField>
+
+<ParamField body="formId" type="string" required>
+  The ID of the application form associated with this decision.
+</ParamField>
+
+<ParamField body="responseId" type="string" required>
+  The ID of the application response this confirmation is for.
+</ParamField>
+
+<ParamField body="internalStatusId" type="string" required>
+  The ID of the `InternalApplicationStatus` document that holds the applicant's decision. Used to verify the applicant was indeed accepted.
+</ParamField>
+
+### Responses
+
+Returns `200` on success.
+
+<ResponseField name="message" type="string">
+  `"Confirmation recorded successfully."`.
+</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 400 | A confirmation already exists for this `responseId`. |
+| 401 | The `userId` in the body does not match the authenticated token's `uid`. |
+| 403 | No status record found for `internalStatusId`, or the applicant's status is not `"accepted"`. |
+| 500 | Unexpected Firestore error. |
+
+---
+
+## POST /auth/register
+
+Creates a new Firebase Auth user and a corresponding Firestore user document. All new users are assigned the `applicant` role by default. Only `umd.edu` and `hack4impact.org` email addresses are accepted.
+
+**Authentication:** None required.
+
+<Note>
+  Elevated roles (`reviewer`, `board`, `super-reviewer`) can only be assigned after account creation by a super-reviewer.
+</Note>
+
+### Request body
+
+<ParamField body="email" type="string" required>
+  The user's email address. Must end in `umd.edu` or `@hack4impact.org`.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  The user's initial password, used to create the Firebase Auth account.
+</ParamField>
+
+<ParamField body="firstName" type="string" required>
+  The user's first name.
+</ParamField>
+
+<ParamField body="lastName" type="string" required>
+  The user's last name.
+</ParamField>
+
+### Responses
+
+Returns `200` with the newly created `UserProfile` document on success.
+
+<ResponseField name="id" type="string">The Firebase Auth UID assigned to the new user.</ResponseField>
+<ResponseField name="email" type="string">The registered email address.</ResponseField>
+<ResponseField name="firstName" type="string">First name.</ResponseField>
+<ResponseField name="lastName" type="string">Last name.</ResponseField>
+<ResponseField name="role" type="string">`"applicant"` — the default role for all new registrations.</ResponseField>
+<ResponseField name="dateCreated" type="Timestamp">Firestore Timestamp of account creation.</ResponseField>
+<ResponseField name="activeApplications" type="string[]">Initially an empty array.</ResponseField>
+<ResponseField name="inactiveApplications" type="string[]">Initially an empty array.</ResponseField>
+<ResponseField name="inactive" type="boolean">`false` — all new accounts are active.</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 400 | The email address does not end in `umd.edu` or `@hack4impact.org`, or the request body failed schema validation. |
+| 500 | Firebase Auth account creation failed (e.g. email already in use), or Firestore write failed. |
+
+---
+
+## POST /auth/update
+
+Updates the email address and display name for the authenticated user in both Firebase Auth and the `users` Firestore collection.
+
+**Authentication:** `isAuthenticated`
+
+### Request body
+
+<ParamField body="email" type="string" required>
+  The new email address.
+</ParamField>
+
+<ParamField body="firstName" type="string" required>
+  Updated first name.
+</ParamField>
+
+<ParamField body="lastName" type="string" required>
+  Updated last name.
+</ParamField>
+
+### Responses
+
+Returns `200` with the updated `UserProfile` document on success.
+
+<ResponseField name="id" type="string">The user's Firebase Auth UID.</ResponseField>
+<ResponseField name="email" type="string">Updated email address.</ResponseField>
+<ResponseField name="firstName" type="string">Updated first name.</ResponseField>
+<ResponseField name="lastName" type="string">Updated last name.</ResponseField>
+<ResponseField name="role" type="string">The user's current role (unchanged).</ResponseField>
+<ResponseField name="dateCreated" type="Timestamp">Original account creation timestamp (unchanged).</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 500 | Firebase Auth update failed, Firestore update failed, or the user profile could not be retrieved after the update. |
+
+---
+
+## POST /auth/create-internal-applicant
+
+Creates a user profile and an application response for an internal applicant (an existing club member reapplying). Internal applicants skip the standard review process: their status is immediately set to `"interview"` for each role they apply for. No Firebase Auth account is created — only a Firestore user document.
+
+**Authentication:** `isAuthenticated` · **Authorization:** Caller's Firestore `role` must be `"super-reviewer"` (verified inside the handler, not via `hasRoles` middleware).
+
+<Warning>
+  Internal applicants are assigned a randomly generated dummy email and have no Firebase Auth login. Any code that manipulates Auth and Firestore user records together must account for this.
+</Warning>
+
+### Request body
+
+<ParamField body="formId" type="string" required>
+  The ID of the active application form to associate the internal applicant with. The form must exist.
+</ParamField>
+
+<ParamField body="firstName" type="string" required>
+  Internal applicant's first name.
+</ParamField>
+
+<ParamField body="lastName" type="string" required>
+  Internal applicant's last name.
+</ParamField>
+
+<ParamField body="rolesApplied" type="string[]" required>
+  Roles this internal applicant is applying for. One `InternalApplicationStatus` document with `status: "interview"` and `isQualified: true` is created for each role.
+</ParamField>
+
+<ParamField body="sectionResponses" type="object[]" required>
+  Pre-filled section responses for the internal applicant's application. See the `sectionResponses` schema under `POST /application/submit` for the nested structure.
+</ParamField>
+
+### Responses
+
+Returns `200` with the created user and application response on success.
+
+<ResponseField name="user" type="object">
+  The newly created `UserProfile` document.
+
+  <Expandable title="UserProfile properties">
+    <ResponseField name="id" type="string">Generated UUID (not a Firebase Auth UID).</ResponseField>
+    <ResponseField name="email" type="string">Auto-generated dummy email address.</ResponseField>
+    <ResponseField name="firstName" type="string">First name.</ResponseField>
+    <ResponseField name="lastName" type="string">Last name.</ResponseField>
+    <ResponseField name="role" type="string">`"applicant"`.</ResponseField>
+    <ResponseField name="isInternal" type="boolean">`true`.</ResponseField>
+    <ResponseField name="dateCreated" type="Timestamp">Firestore Timestamp of creation.</ResponseField>
+    <ResponseField name="activeApplications" type="string[]">Contains the provided `formId`.</ResponseField>
+    <ResponseField name="inactiveApplications" type="string[]">Initially an empty array.</ResponseField>
+    <ResponseField name="inactive" type="boolean">`false`.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="applicationResponse" type="object">
+  The submitted application response document.
+
+  <Expandable title="ApplicationResponse properties">
+    <ResponseField name="id" type="string">Generated UUID for the response document.</ResponseField>
+    <ResponseField name="userId" type="string">The internal applicant's generated UUID.</ResponseField>
+    <ResponseField name="applicationFormId" type="string">The provided `formId`.</ResponseField>
+    <ResponseField name="rolesApplied" type="string[]">Roles applied for.</ResponseField>
+    <ResponseField name="sectionResponses" type="object[]">The provided section responses.</ResponseField>
+    <ResponseField name="status" type="string">`"submitted"`.</ResponseField>
+    <ResponseField name="dateSubmitted" type="Timestamp">Firestore Timestamp of creation.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 400 | The specified `formId` does not correspond to an existing application form, or the request body failed schema validation. |
+| 403 | The authenticated user's Firestore role is not `"super-reviewer"`. |
+| 500 | Firestore batch write failure. |

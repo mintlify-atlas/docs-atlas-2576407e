@@ -1,0 +1,89 @@
+---
+title: "Set up the app-portal development environment"
+description: "Install Node.js 22, the Firebase CLI, and Java, then run the Vite dev server and Firebase emulator suite to develop the app-portal locally."
+---
+
+The app-portal is a monorepo with a React/Vite frontend and a Firebase Cloud Functions backend. To run the full stack locally you need to start both the frontend dev server and the Firebase emulators independently.
+
+## Prerequisites
+
+Before you begin, make sure you have the following installed:
+
+- **Node.js 22** — required by the backend Cloud Functions (see `engines` in `backend/functions/package.json`)
+- **npm** — included with Node.js
+- **Firebase CLI** — used to run the local emulators; see [Firebase emulators](/development/firebase-emulators) for installation steps
+- **Java** — required by the Firebase emulator suite; install the latest version from the Oracle website and add it to your `PATH`
+
+## Frontend setup
+
+The frontend is a Vite application using React 19, TypeScript, Tailwind CSS 4, shadcn/ui, TanStack Query, and React Router.
+
+<Steps>
+  <Step title="Navigate to the frontend directory">
+    ```bash
+    cd frontend
+    ```
+  </Step>
+  <Step title="Install dependencies">
+    ```bash
+    npm install
+    ```
+  </Step>
+  <Step title="Start the development server">
+    ```bash
+    npm run dev
+    ```
+
+    Vite starts a local dev server. Open the URL printed in the terminal (typically `http://localhost:5173`) in your browser.
+  </Step>
+</Steps>
+
+## Backend setup
+
+The backend is a Node.js Express app deployed as Firebase Cloud Functions, backed by Firestore, Firebase Auth, Cloud Storage, and Cloud Tasks.
+
+<Steps>
+  <Step title="Install and build the functions">
+    Navigate to the functions directory, install dependencies, and compile TypeScript to JavaScript.
+
+    <CodeGroup>
+
+    ```bash Navigate
+    cd backend/functions
+    ```
+
+    ```bash Install
+    npm install
+    ```
+
+    ```bash Build
+    npm run build
+    ```
+
+    </CodeGroup>
+  </Step>
+  <Step title="Start the Firebase emulators">
+    From the `backend` directory, start the full emulator suite. The first run may take a moment while the emulator binaries are downloaded.
+
+    ```bash
+    firebase emulators:start
+    ```
+
+    Once the emulators are running, you will see a summary table of services and ports, along with a link to the emulator UI. Open that link in your browser to verify that Auth, Firestore, Functions, Storage, and Hosting are all showing **On**.
+  </Step>
+</Steps>
+
+<Note>
+  The `npm run serve` script inside `backend/functions/package.json` runs `firebase emulators:start --only functions`, which starts the Functions emulator only. To run the full suite (Auth, Firestore, Storage, Hosting, and Functions), run `firebase emulators:start` from the `backend` directory as shown above.
+</Note>
+
+## Tech stack reference
+
+<CardGroup cols={2}>
+  <Card title="Frontend" icon="browser">
+    React 19, Vite, TypeScript, Tailwind CSS 4, shadcn/ui + Radix UI, TanStack Query, React Router, Zod
+  </Card>
+  <Card title="Backend" icon="server">
+    Node.js 22, Express, Firebase Cloud Functions, Firestore, Firebase Auth, Cloud Storage, Cloud Tasks, Zod
+  </Card>
+</CardGroup>

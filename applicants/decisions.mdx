@@ -1,0 +1,65 @@
+---
+title: "Responding to your acceptance decision"
+description: "View your role-specific decision letter once decisions are released, and confirm your acceptance through the portal to secure your spot."
+---
+
+When the application cycle concludes and an admin releases decisions, the portal makes your decision letter available for each role you applied for. This page explains how to find your decision, what the three possible outcomes mean, and how to confirm your acceptance if you were offered a spot.
+
+## When decision letters become available
+
+Decision letters are only visible after a club admin sets `decisionsReleased` to `true` on the application form. Until that flag is enabled, your status page shows `decided` as a placeholder — the specific outcome is not disclosed early.
+
+Once decisions are released, you can access the decision page for each role at:
+
+```
+/apply/decision/:responseId/:role
+```
+
+Each role you applied for has its own decision page. Navigate to the one corresponding to the role you want to view.
+
+## The three possible decisions
+
+<AccordionGroup>
+  <Accordion title="Accepted" defaultOpen={false}>
+    You have been offered a spot in the role you applied for. An acceptance letter is displayed on the decision page. You must confirm your acceptance through the portal to secure your membership — see [Confirming your acceptance](#confirming-your-acceptance) below.
+  </Accordion>
+  <Accordion title="Denied">
+    Your application for this role was not selected in this cycle. A decision letter is displayed explaining the outcome. No further action is required.
+  </Accordion>
+  <Accordion title="Waitlisted">
+    You have been placed on the waitlist for this role. A decision letter is displayed. The club may contact you if a spot becomes available. No immediate action is required unless you are contacted.
+  </Accordion>
+</AccordionGroup>
+
+## Decision letters by role
+
+Decision letters are role-specific. The portal stores separate letter content for **Bootcamp** and all other **team roles** (Engineer, Designer, Product, Tech Lead, Social Media Manager, Outreach Coordinator). This means the text of an accepted letter for Bootcamp may differ from the text for a team role.
+
+The same distinction applies to waitlist letters. Denied letters share a single template regardless of role.
+
+## Confirming your acceptance
+
+If you were accepted, you must actively confirm your spot through the portal. The confirmation is submitted via the decision page.
+
+<Steps>
+  <Step title="Open the decision page for the accepted role">
+    Navigate to `/apply/decision/:responseId/:role` for the role you were accepted to. The page displays your acceptance letter.
+  </Step>
+  <Step title="Read the acceptance letter">
+    Review the full letter before confirming. The letter includes any relevant information about onboarding, next steps, or expectations for new members.
+  </Step>
+  <Step title="Confirm your acceptance">
+    Click the confirmation button on the decision page. The portal sends a `POST /status/decision` request with your confirmation.
+  </Step>
+  <Step title="Confirmation recorded">
+    On success, a `DecisionLetterStatus` document is created in the portal database, recording that you have accepted the offer. The portal confirms the action on screen.
+  </Step>
+</Steps>
+
+<Warning>
+  You can only confirm acceptance once per application response. If you attempt to confirm a second time, the portal will return an error: "Confirmation already exists for this responseId." If you believe you confirmed in error, contact your club administrator immediately.
+</Warning>
+
+<Note>
+  Only applicants with an `accepted` internal status can submit a confirmation. Attempting to confirm a denied or waitlisted outcome returns an error and no record is created.
+</Note>

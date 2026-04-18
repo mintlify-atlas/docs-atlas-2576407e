@@ -1,0 +1,60 @@
+---
+title: "Track your application status"
+description: "Understand what each application status stage means, how per-role review statuses work, and when full decision details become visible."
+---
+
+After you submit your application, the portal gives you real-time visibility into where it stands in the review pipeline. There are two layers of status to be aware of: the overall **application status**, which describes the stage your entire application is in, and **per-role review statuses**, which reflect the progress of reviewers scoring each role you applied for.
+
+## Application status stages
+
+Your `ApplicationResponse` document carries a single `status` field that moves through the following stages:
+
+<AccordionGroup>
+  <Accordion title="in-progress" defaultOpen={false}>
+    Your application has been started but not yet submitted. You can still edit and save your responses. This is the initial status assigned when you first open the form.
+  </Accordion>
+  <Accordion title="submitted">
+    You clicked **Submit** and the portal accepted your application. Your responses are locked and the review process has begun. You will see this status immediately after a successful submission.
+  </Accordion>
+  <Accordion title="in-review">
+    Reviewers have been assigned to score your application. Your responses are being evaluated against the role rubrics.
+  </Accordion>
+  <Accordion title="interview">
+    You have advanced to the interview stage. At least one of the roles you applied for has been marked as qualifying for an interview. Expect to be contacted by the club with scheduling details.
+  </Accordion>
+  <Accordion title="decided">
+    A final decision has been made on your application. This status is shown before decisions are officially released. You will not see the specific outcome yet — only that the review process is complete.
+  </Accordion>
+</AccordionGroup>
+
+<Info>
+  The `inactive` status is used internally to mark applications that are no longer part of an active cycle. You will not normally encounter this status as an applicant.
+</Info>
+
+## Per-role review statuses
+
+Because you can apply for multiple roles at once, the portal tracks a separate `ReviewStatus` for each role you selected. These statuses are shown on your status page once your application has been submitted.
+
+| Status | What it means |
+|---|---|
+| `not-reviewed` | No reviewer has been assigned to your application for this role yet. |
+| `under-review` | A reviewer is actively scoring your application for this role. This is the initial status created when you submit. |
+| `reviewed` | Reviewers have finished scoring your application for this role. |
+| `interview` | Your application for this role has qualified for an interview. |
+| `accepted` | You have been accepted for this role. |
+| `denied` | Your application for this role was not successful. |
+| `waitlist` | You have been placed on the waitlist for this role. |
+
+## When decisions are released
+
+The portal controls the visibility of final per-role statuses through a `decisionsReleased` flag on the application form. Until an admin releases decisions, the status endpoint returns a **limited public view** of your status:
+
+- If your internal status is `interview`, you see `interview`.
+- If your internal status is `accepted`, `denied`, or `waitlist`, you see `decided` — the specific outcome is hidden until decisions are released.
+- In all other cases, you see `under-review`.
+
+Once `decisionsReleased` is set to `true`, the full status is returned and the portal shows your actual outcome for each role. At that point, accepted applicants can navigate to the decision page to view their acceptance letter and confirm their spot.
+
+<Tip>
+  If your status reads "decided" but you cannot see an outcome, decisions have not been released yet. There is nothing you need to do — check back after the club announces the decision release date.
+</Tip>

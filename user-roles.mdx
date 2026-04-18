@@ -1,0 +1,123 @@
+---
+title: "User roles and permissions in the Application Portal"
+description: "The portal has four roles — Applicant, Reviewer, Board, and Super Reviewer — each with distinct access to applications, reviews, and admin tools."
+---
+
+Every account in the Hack4Impact-UMD Application Portal is assigned a role that controls which pages, dashboards, and actions are available. Roles are set automatically at registration and can only be elevated by a super reviewer. Understanding which role you have — and what it lets you do — is the first step to using the portal effectively.
+
+## The four roles
+
+<CardGroup cols={2}>
+  <Card title="Applicant" icon="user">
+    The default role for all new registrations. Applicants can fill out and submit an application form, track their review status, revisit a submitted application, and view their decision letter when decisions are released.
+  </Card>
+  <Card title="Reviewer" icon="star">
+    Assigned club members who score submitted applications. Reviewers see only the applications assigned to them, complete structured rubric scoring, and conduct scored interviews for applicants who advance past the review stage.
+  </Card>
+  <Card title="Board" icon="users">
+    Role administrators who oversee applications for the specific team roles they manage. Board members can view all applications and interview results for their roles, and inspect individual reviewer and interviewer assignment details.
+  </Card>
+  <Card title="Super Reviewer" icon="shield">
+    Full administrative access. Super reviewers manage the application form and rubric, assign and reassign reviews and interviews, promote or demote user roles, and create internal applicant records for returning club members.
+  </Card>
+</CardGroup>
+
+## Role capabilities at a glance
+
+| Capability | Applicant | Reviewer | Board | Super Reviewer |
+|---|:---:|:---:|:---:|:---:|
+| Submit an application | Yes | — | — | — |
+| Track application status | Yes | — | — | — |
+| View decision letter | Yes | — | — | — |
+| Score assigned applications | — | Yes | Yes | Yes |
+| Conduct scored interviews | — | Yes | Yes | Yes |
+| View all applications for managed roles | — | — | Yes | Yes |
+| View reviewer and interviewer assignments | — | — | Yes | Yes |
+| Manage the application form and rubric | — | — | — | Yes |
+| Assign reviews and interviews | — | — | — | Yes |
+| Change user roles | — | — | — | Yes |
+| Create internal applicant records | — | — | — | Yes |
+
+<Note>
+  Board members and super reviewers share access to the application and interview review pages (`/admin/review/...` and `/admin/interview/...`). The key difference is that super reviewers have additional access to the admin dashboards, form builder, rubric builder, and user management.
+</Note>
+
+## How roles are assigned
+
+All new accounts are created with the `applicant` role. This is enforced in the registration endpoint:
+
+```typescript backend/functions/src/routes/auth.ts
+const user: UserProfile = {
+  id: userRecord.uid,
+  email: registerForm.email,
+  firstName: registerForm.firstName,
+  lastName: registerForm.lastName,
+  role: "applicant", // by default, everyone is set to applicant. higher privelages can only be assigned by super-reviewers
+  dateCreated: Timestamp.now(),
+  activeApplications: [],
+  inactiveApplications: [],
+  inactive: false // active by default
+}
+```
+
+To receive a higher role — `reviewer`, `board`, or `super-reviewer` — a super reviewer must update your account through the **User Management** page at `/admin/dor/users`. The four role values come directly from the `PermissionRole` enum:
+
+```typescript frontend/src/types/types.ts
+export enum PermissionRole {
+  SuperReviewer = "super-reviewer",
+  Reviewer = "reviewer",
+  Board = "board",
+  Applicant = "applicant",
+}
+```
+
+<Tip>
+  If you need a role change, contact your club's super reviewer (Director of Recruitment). They are the only users who can promote accounts through the portal.
+</Tip>
+
+## Email domain restriction
+
+Registration is restricted to two email domains. Any other address is rejected during sign-up:
+
+```typescript backend/functions/src/routes/auth.ts
+if (!registerForm.email.trim().endsWith("umd.edu") && !registerForm.email.trim().endsWith("@hack4impact.org")) {
+  res.status(400).send("Only emails ending in umd.edu or hack4impact.org are allowed!")
+  return;
+}
+```
+
+Use your `@umd.edu` student address or your `@hack4impact.org` club address. Personal email addresses (Gmail, Outlook, etc.) are not accepted.
+
+## Internal applicants
+
+Current club members who want to re-apply for a different role are handled differently from external applicants. A super reviewer creates an **internal applicant** record on their behalf using the `/create-internal-applicant` endpoint. Internal applicants:
+
+- Are given the `applicant` role with `isInternal: true` set on their profile.
+- Skip the standard application review stage entirely.
+- Are immediately placed at `ReviewStatus.Interview`, meaning they go straight to the interview stage.
+
+```typescript frontend/src/types/types.ts
+export interface ApplicantUserProfile extends IUserProfile {
+  role: PermissionRole.Applicant;
+  activeApplicationIds: string[];
+  inactiveApplicationIds: string[];
+  isInternal?: boolean; // for club members reapplying, will skip to interview
+}
+```
+
+<Note>
+  Internal applicant records do not have Firebase Auth accounts. They are Firestore-only records created and managed entirely by a super reviewer. If you are a returning club member, you do not need to register a new account yourself.
+</Note>
+
+## Where each role lands after login
+
+After a successful login, the portal redirects each role to a different starting page:
+
+| Role | Default redirect |
+|---|---|
+| `applicant` | `/apply` — Application overview |
+| `reviewer` | `/admin` — Admin home |
+| `board` | `/admin` — Admin home |
+| `super-reviewer` | `/admin` — Admin home |
+
+Applicants only have access to the `/apply` routes. All internal (reviewer, board, super-reviewer) roles share the `/admin` section of the portal, with route-level guards ensuring each role sees only the pages appropriate to their permissions.

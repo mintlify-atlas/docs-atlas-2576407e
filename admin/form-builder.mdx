@@ -1,0 +1,201 @@
+---
+title: "Build and manage application forms"
+description: "How to create and update application forms using the form builder, including sections, question types, role gating, and score weights."
+---
+
+The Form Builder is a split-pane editor at `/admin/dor/form-builder/:formId`. The left pane accepts raw JSON that conforms to the `ApplicationForm` type; the right pane renders a live preview so you can inspect every section and question before uploading. When you open an existing form, the editor pre-populates with the current Firestore document.
+
+<Warning>
+  The form editor loads the active form for the given `formId`. If `isActive` or `decisionsReleased` is `true` in your JSON, the preview displays a warning banner before you upload.
+</Warning>
+
+## `ApplicationForm` structure
+
+An `ApplicationForm` document controls everything about a single recruitment cycle.
+
+```typescript types/formBuilderTypes.ts
+export interface ApplicationForm {
+  id: string;
+  isActive: boolean;
+  dueDate: Timestamp;
+  semester: string;
+  description: string;
+  sections: ApplicationSection[];
+  decisionsReleased: boolean;
+  disabledRoles?: ApplicantRole[];
+  scoreWeights: {
+    [role in ApplicantRole]: {
+      [score in string]: number;
+    };
+  };
+  interviewScoreWeights: {
+    [role in ApplicantRole]: {
+      [score in string]: number;
+    };
+  };
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Firestore document ID. Must be unique across all forms. |
+| `isActive` | `boolean` | When `true`, the form is open to applicants. |
+| `dueDate` | `Timestamp` | Submission deadline. The editor converts ISO strings back to Firestore `Timestamp` on upload. |
+| `semester` | `string` | Human-readable label, e.g. `"Fall 2025"`. |
+| `description` | `string` | Markdown rendered at the top of the applicant-facing form. |
+| `sections` | `ApplicationSection[]` | Ordered list of sections. |
+| `decisionsReleased` | `boolean` | When `true`, applicants can view their outcome. **Irreversible once set.** |
+| `disabledRoles` | `ApplicantRole[]` | Roles hidden from the role-select question. Applicants cannot apply for these roles. |
+| `scoreWeights` | `Record<ApplicantRole, Record<string, number>>` | Per-role weights for application rubric score keys. |
+| `interviewScoreWeights` | `Record<ApplicantRole, Record<string, number>>` | Per-role weights for interview rubric score keys. |
+
+## `ApplicationSection` structure
+
+Each section groups related questions and can be restricted to specific applicant roles.
+
+```typescript types/formBuilderTypes.ts
+export interface ApplicationSection {
+  sectionId: string;
+  sectionName: string;
+  description?: string;
+  forRoles?: ApplicantRole[];
+  questions: ApplicationQuestion[];
+  hideFromReviewers?: boolean;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `sectionId` | `string` | Alphanumeric, no spaces. Used as a route parameter—must be unique across the form. |
+| `sectionName` | `string` | Display name shown to applicants. |
+| `description` | `string` | Optional section-level description rendered above the questions. |
+| `forRoles` | `ApplicantRole[]` | When set, only applicants who selected one of these roles will see this section. |
+| `questions` | `ApplicationQuestion[]` | Ordered list of questions. |
+| `hideFromReviewers` | `boolean` | When `true`, this section is hidden in the reviewer and board application views. |
+
+## Question types
+
+The `QuestionType` enum defines six question variants:
+
+```typescript types/formBuilderTypes.ts
+export enum QuestionType {
+  ShortAnswer = "short-answer",
+  LongAnswer = "long-answer",
+  MultipleChoice = "multiple-choice",
+  MultipleSelect = "multiple-select",
+  FileUpload = "file-upload",
+  RoleSelect = "role-select",
+}
+```
+
+<AccordionGroup>
+  <Accordion title="ShortAnswer / LongAnswer">
+    Maps to `TextQuestion`. Both support `minimumWordCount` and `maximumWordCount` for server-side validation. The backend rejects submissions where the word count falls outside the configured range.
+
+    ```typescript types/formBuilderTypes.ts
+    export interface TextQuestion extends IApplicationQuestion {
+      questionType: QuestionType.ShortAnswer | QuestionType.LongAnswer;
+      placeholderText: string;
+      maximumWordCount?: number;
+      minimumWordCount?: number;
+    }
+    ```
+  </Accordion>
+  <Accordion title="MultipleChoice / MultipleSelect">
+    Maps to `OptionQuestion`. Provide a `questionOptions` array of strings. `MultipleChoice` allows one selection; `MultipleSelect` allows many.
+
+    ```typescript types/formBuilderTypes.ts
+    export interface OptionQuestion extends IApplicationQuestion {
+      questionType: QuestionType.MultipleChoice | QuestionType.MultipleSelect;
+      multipleSelect: boolean;
+      questionOptions: string[];
+    }
+    ```
+  </Accordion>
+  <Accordion title="FileUpload">
+    Maps to `FileUploadQuestion`. Requires a unique `fileId` string that identifies the upload slot.
+
+    ```typescript types/formBuilderTypes.ts
+    export interface FileUploadQuestion extends IApplicationQuestion {
+      questionType: QuestionType.FileUpload;
+      fileId: string;
+    }
+    ```
+  </Accordion>
+  <Accordion title="RoleSelect">
+    Maps to `RoleSelectQuestion`. Renders the role-selection widget that populates `rolesApplied` on the submitted response. Every form must contain exactly one `RoleSelect` question. The `disabledRoles` list on the form is enforced at this question.
+
+    ```typescript types/formBuilderTypes.ts
+    export interface RoleSelectQuestion extends IApplicationQuestion {
+      questionType: QuestionType.RoleSelect;
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Available applicant roles
+
+```typescript types/formBuilderTypes.ts
+export enum ApplicantRole {
+  Bootcamp = "bootcamp",
+  Engineer = "engineer",
+  Designer = "designer",
+  Product = "product",
+  TechLead = "tech-lead",
+  SocialMedia = "social-media-manager",
+  OutreachCoord = "outreach-coordinator",
+}
+```
+
+## Disabling roles with `disabledRoles`
+
+To close a specific role for a recruitment cycle without removing its form sections, add the role value to the `disabledRoles` array:
+
+```json
+{
+  "disabledRoles": ["tech-lead", "social-media-manager"]
+}
+```
+
+The backend validates submissions against this list and returns a `400` error if an applicant tries to apply for a disabled role.
+
+## Score weights
+
+`scoreWeights` and `interviewScoreWeights` map each `ApplicantRole` to a dictionary of score key names and their numeric weights (0–4). The keys must exactly match the `scoreKey` values defined in the corresponding rubrics.
+
+```json
+{
+  "scoreWeights": {
+    "engineer": {
+      "technical": 3,
+      "communication": 2,
+      "teamwork": 1
+    }
+  }
+}
+```
+
+<Note>
+  If a `scoreKey` appears in a rubric but is missing from `scoreWeights`, the Rubric Builder will display a validation warning. Uploads are still allowed, but scores for that key will not contribute to the final ranking.
+</Note>
+
+## Uploading a form
+
+<Steps>
+  <Step title="Edit the JSON">
+    Paste or modify the form JSON in the left-hand editor. Use the **Compile** button (or enable **Auto-compile**) to render the live preview on the right.
+  </Step>
+  <Step title="Resolve warnings">
+    If the preview banner shows `decisionsReleased: true` or `isActive: true`, confirm this is intentional before uploading.
+  </Step>
+  <Step title="Check for duplicate IDs">
+    The upload handler validates that all `sectionId` and `questionId` values are unique. A duplicate ID triggers an error toast and aborts the upload.
+  </Step>
+  <Step title="Click Upload Form">
+    The editor calls `POST /application/forms` (requires `super-reviewer` token). If a form with the same `id` already exists and has submitted responses, the section and question order must remain identical to the existing form.
+  </Step>
+</Steps>
+
+<Warning>
+  Changing `sectionId` values or reordering sections on a form that already has submitted responses will cause the upload to fail with a `400` error. Add new sections at the end, and never rename existing `sectionId` values after the form goes live.
+</Warning>

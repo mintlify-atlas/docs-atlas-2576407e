@@ -1,0 +1,337 @@
+---
+title: "Firestore data model and type definitions"
+description: "Reference for all Firestore collections in the app-portal, their TypeScript interfaces, key relationships, and how data flows between frontend and backend."
+---
+
+The app-portal stores all persistent data in Firestore. Each collection maps to a TypeScript interface or type defined in `frontend/src/types/`. Understanding how these collections relate to each other is the starting point for contributing to the codebase.
+
+## Users collection
+
+The `users` collection stores one document per registered account. The document type is `UserProfile`, a discriminated union based on the `role` field.
+
+```typescript
+export type UserProfile =
+  | ApplicantUserProfile
+  | ReviewerUserProfile
+  | BoardUserProfile
+  | SuperReviewerUserProfile;
+```
+
+All user types extend the shared `IUserProfile` interface:
+
+```typescript
+export interface IUserProfile {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: PermissionRole;
+  dateCreated: Timestamp;
+  inactive?: boolean;
+}
+```
+
+The four concrete types add role-specific fields:
+
+```typescript
+export interface ApplicantUserProfile extends IUserProfile {
+  role: PermissionRole.Applicant;
+  activeApplicationIds: string[];
+  inactiveApplicationIds: string[];
+  isInternal?: boolean; // club members reapplying, skips to interview
+}
+
+export interface ReviewerUserProfile extends IUserProfile {
+  role: PermissionRole.Reviewer;
+  applicantRolePreferences: ApplicantRole[]; // roles this reviewer prefers to review
+}
+
+export interface BoardUserProfile extends IUserProfile {
+  role: PermissionRole.Board;
+  applicantRoles: ApplicantRole[]; // roles this board member administrates
+}
+
+export interface SuperReviewerUserProfile extends IUserProfile {
+  role: PermissionRole.SuperReviewer;
+}
+```
+
+The `PermissionRole` enum defines the four valid values for the `role` field:
+
+```typescript
+export enum PermissionRole {
+  SuperReviewer = "super-reviewer",
+  Reviewer = "reviewer",
+  Board = "board",
+  Applicant = "applicant",
+}
+```
+
+## Application forms collection
+
+The `application-forms` collection holds one document per recruitment cycle. Each document describes the form structure and its scoring configuration.
+
+```typescript
+export interface ApplicationForm {
+  id: string;
+  isActive: boolean;
+  dueDate: Timestamp;
+  semester: string;
+  description: string;
+  sections: ApplicationSection[];
+  decisionsReleased: boolean;
+  disabledRoles?: ApplicantRole[];
+  scoreWeights: {
+    [role in ApplicantRole]: {
+      [score in string]: number; // weight between 0-4
+    };
+  };
+  interviewScoreWeights: {
+    [role in ApplicantRole]: {
+      [score in string]: number;
+    };
+  };
+}
+```
+
+Each form is divided into sections, and sections contain questions:
+
+```typescript
+export interface ApplicationSection {
+  sectionId: string;
+  sectionName: string;
+  description?: string;
+  forRoles?: ApplicantRole[]; // role-specific sections
+  questions: ApplicationQuestion[];
+  hideFromReviewers?: boolean;
+}
+```
+
+Questions use a discriminated union on `questionType`:
+
+```typescript
+export type ApplicationQuestion =
+  | TextQuestion
+  | OptionQuestion
+  | FileUploadQuestion
+  | RoleSelectQuestion;
+
+export enum QuestionType {
+  ShortAnswer = "short-answer",
+  LongAnswer = "long-answer",
+  MultipleChoice = "multiple-choice",
+  MultipleSelect = "multiple-select",
+  FileUpload = "file-upload",
+  RoleSelect = "role-select",
+}
+```
+
+## Application responses collection
+
+The `application-responses` collection stores one document per applicant submission.
+
+```typescript
+export interface ApplicationResponse {
+  id: string;
+  userId: string;
+  applicationFormId: string;
+  rolesApplied: ApplicantRole[];
+  sectionResponses: SectionResponse[];
+  status: ApplicationStatus;
+  dateSubmitted: Timestamp;
+}
+```
+
+The `status` field tracks where the applicant is in the pipeline:
+
+```typescript
+export enum ApplicationStatus {
+  InProgress = "in-progress",
+  Submitted = "submitted",
+  UnderReview = "in-review",
+  Interview = "interview",
+  Decided = "decided",
+  InActive = "inactive",
+}
+```
+
+Individual answers are stored as `SectionResponse` and `QuestionResponse` objects:
+
+```typescript
+export interface SectionResponse {
+  sectionId: string;
+  questions: QuestionResponse[];
+}
+
+export interface QuestionResponse {
+  questionType: QuestionType;
+  applicationFormId: string;
+  questionId: string;
+  response: string | string[];
+}
+```
+
+## App-status collection
+
+The `app-status` collection stores one document per applicant per role, tracking the review decision for that combination.
+
+```typescript
+export type InternalApplicationStatus = {
+  id: string;
+  formId: string;
+  role: ApplicantRole;
+  responseId: string;
+  status: ReviewStatus;
+  isQualified: boolean;
+};
+```
+
+The `ReviewStatus` enum covers the full lifecycle from initial review through to a final decision:
+
+```typescript
+export enum ReviewStatus {
+  NotReviewed = "not-reviewed",
+  UnderReview = "under-review",
+  Reviewed = "reviewed",
+  Interview = "interview",
+  Accepted = "accepted",
+  Denied = "denied",
+  Waitlisted = "waitlist",
+}
+```
+
+## Review data collection
+
+The `review-data` collection stores one document per reviewer–application–role combination. Each document captures the reviewer's numerical scores and written notes.
+
+```typescript
+export interface ApplicationReviewData {
+  id: string;
+  reviewerId: string;
+  applicationFormId: string;
+  applicationResponseId: string;
+  applicantId: string;
+  applicantScores: Record<string, number>;
+  reviewerNotes: Record<string, string>;
+  forRole: ApplicantRole;
+  submitted: boolean;
+}
+```
+
+## Interview data collection
+
+The `interview-data` collection mirrors `review-data` but captures scores and notes from interviewers rather than application reviewers.
+
+```typescript
+export interface ApplicationInterviewData {
+  id: string;
+  interviewerId: string;
+  applicationFormId: string;
+  applicationResponseId: string;
+  applicantId: string;
+  interviewScores: Record<string, number>;
+  interviewerNotes: Record<string, string>;
+  forRole: ApplicantRole;
+  submitted: boolean;
+}
+```
+
+## Rubrics and interview rubrics
+
+The `rubrics` and `interview-rubrics` collections both use the `RoleReviewRubric` type. They define the scoring criteria reviewers and interviewers use when evaluating applicants.
+
+```typescript
+export type RoleReviewRubric = {
+  id: string;
+  formId: string;
+  roles: ApplicantRole[];
+  rubricQuestions: ReviewRubricQuestion[];
+  detailLink?: string;
+  commentsDescription?: string;
+};
+
+export type ReviewRubricQuestion = {
+  scoreKey: string;
+  prompt: string;
+  description?: string;
+  maxValue?: number; // default 4
+  minValue?: number; // default 0
+};
+```
+
+The `scoreKey` in each rubric question matches the keys in `applicantScores` (in `ApplicationReviewData`) and `interviewScores` (in `ApplicationInterviewData`), and also maps to the `scoreWeights` defined on `ApplicationForm`.
+
+## Decision status collection
+
+The `decision-status` collection records whether an applicant has confirmed their acceptance or denial after decisions are released.
+
+```typescript
+export type DecisionLetterStatus = {
+  status: "accepted" | "denied";
+  userId: string;
+  formId: string;
+  responseId: string;
+  internalStatusId: string;
+};
+```
+
+## Grading jobs collections
+
+The `grading-jobs-public` and `grading-jobs-internal` collections track the state of autograder jobs. Public documents contain the information visible to applicants; internal documents hold backend processing state. Both are managed by the grading subsystem and are not represented by a named TypeScript interface in the shared types file.
+
+## Assignments
+
+Assignment documents link reviewers and interviewers to specific applicant responses. The `Assignment` union type covers both cases:
+
+```typescript
+export type AppReviewAssignment = {
+  id: string;
+  assignmentType: "review";
+  formId: string;
+  reviewerId: string;
+  applicantId: string;
+  applicationResponseId: string;
+  forRole: ApplicantRole;
+};
+
+export type InterviewAssignment = {
+  id: string;
+  assignmentType: "interview";
+  formId: string;
+  interviewerId: string;
+  applicantId: string;
+  applicationResponseId: string;
+  forRole: ApplicantRole;
+};
+
+export type Assignment = AppReviewAssignment | InterviewAssignment;
+```
+
+## Collection summary
+
+<CardGroup cols={2}>
+  <Card title="users" icon="user">
+    One document per account. Role field determines `UserProfile` subtype: `applicant`, `reviewer`, `board`, or `super-reviewer`.
+  </Card>
+  <Card title="application-forms" icon="file-text">
+    One document per semester cycle. Contains sections, questions, score weights, and due date.
+  </Card>
+  <Card title="application-responses" icon="inbox">
+    One document per applicant submission. Contains section answers and current `ApplicationStatus`.
+  </Card>
+  <Card title="app-status" icon="circle-check">
+    One document per applicant per role. Tracks `ReviewStatus` and qualification for interview.
+  </Card>
+  <Card title="review-data" icon="star">
+    One document per reviewer–response–role tuple. Stores numerical scores and reviewer notes.
+  </Card>
+  <Card title="interview-data" icon="mic">
+    One document per interviewer–response–role tuple. Mirrors `review-data` for the interview stage.
+  </Card>
+  <Card title="rubrics / interview-rubrics" icon="list">
+    Scoring criteria definitions used to populate the score keys in review and interview data documents.
+  </Card>
+  <Card title="decision-status" icon="mail">
+    Records an applicant's response to their acceptance or denial letter after decisions are released.
+  </Card>
+</CardGroup>

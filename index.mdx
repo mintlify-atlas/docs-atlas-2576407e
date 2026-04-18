@@ -1,97 +1,61 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Hack4Impact Application Portal"
+description: "The Application Portal streamlines club membership recruitment at Hack4Impact-UMD — from application submission to final decisions, all in one place."
 ---
 
-## Setting up
+The Hack4Impact-UMD Application Portal manages the full membership recruitment lifecycle for the club. Applicants submit role-specific applications, reviewers score them using structured rubrics, and admins orchestrate the entire pipeline — from form creation through final acceptance decisions.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Apply for a Role" icon="file-pen" href="/applicants/getting-started">
+    Create an account and submit your application for open roles at Hack4Impact-UMD.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Reviewer Guide" icon="magnifying-glass" href="/reviewers/dashboard">
+    Access your assigned applications and score them using the review rubric.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Admin Tools" icon="gear" href="/admin/overview">
+    Manage forms, rubrics, users, and the full application review pipeline.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Developer Setup" icon="code" href="/development/local-setup">
+    Set up the project locally and contribute to the portal codebase.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Who uses the portal?
 
-Everything you need to create world-class documentation.
+The portal serves four distinct user roles, each with their own view and capabilities:
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+<CardGroup cols={2}>
+  <Card title="Applicants" icon="user" href="/applicants/getting-started">
+    Students applying to join Hack4Impact-UMD. Submit applications, track status, and respond to decisions.
   </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
+  <Card title="Reviewers" icon="star" href="/reviewers/dashboard">
+    Club members assigned to score submitted applications and conduct interviews.
   </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
+  <Card title="Board Members" icon="users" href="/admin/review-pipeline">
+    Role administrators who oversee the applications for their specific team roles.
   </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
+  <Card title="Super Reviewers" icon="shield" href="/admin/overview">
+    Admins with full control over forms, rubrics, user roles, and the review pipeline.
   </Card>
-</Columns>
+</CardGroup>
 
-## Need inspiration?
+## The recruitment process
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<Steps>
+  <Step title="Apply">
+    Applicants create an account with their UMD email, fill out the application form, and select the roles they're interested in.
+  </Step>
+  <Step title="Review">
+    Submitted applications are assigned to reviewers who score them using a structured rubric. Qualified applicants advance to interviews.
+  </Step>
+  <Step title="Interview">
+    Interviewers conduct and score interviews for qualified applicants. Scores are combined with application scores for final ranking.
+  </Step>
+  <Step title="Decision">
+    Admins release acceptance decisions. Applicants receive decision letters and can confirm their acceptance through the portal.
+  </Step>
+</Steps>
+
+<Note>
+  Registration is restricted to email addresses ending in `umd.edu` or `@hack4impact.org`. If you have trouble accessing the portal, contact your club administrator.
+</Note>

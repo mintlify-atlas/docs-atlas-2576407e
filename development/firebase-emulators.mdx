@@ -1,0 +1,66 @@
+---
+title: "Run Firebase emulators for local development"
+description: "Install the Firebase CLI, authenticate, start the emulator suite, and load mock data to develop against a local Firebase environment."
+---
+
+The Firebase Local Emulator Suite runs Auth, Firestore, Cloud Functions, Cloud Storage, and Hosting entirely on your machine. This lets you develop and test features without touching the production Firebase project.
+
+## Install the Firebase CLI
+
+If you have not already installed the Firebase CLI, run:
+
+```bash
+npm install -g firebase-tools
+```
+
+<Note>
+  The install location may not be added to your `PATH` automatically. If the `firebase` command is not found after installation, locate the CLI executable and add its directory to your `PATH`.
+</Note>
+
+## Authenticate with Firebase
+
+Log in with the Google account that has access to the Firebase project. This opens a browser window where you grant the CLI the required permissions.
+
+```bash
+firebase login
+```
+
+## Start the emulators
+
+Run the following from the `backend` directory. The first run downloads the emulator binaries, which may take a few minutes.
+
+```bash
+firebase emulators:start
+```
+
+When the emulators are ready, the terminal displays a table of running services and a link to the emulator UI. Open that link in your browser and confirm that the following emulators show a green **On** status:
+
+| Emulator    | Default port |
+| ----------- | ------------ |
+| Auth        | 9099         |
+| Functions   | 5001         |
+| Firestore   | 8080         |
+| Database    | 9000         |
+| Hosting     | 5000         |
+| Storage     | 9199         |
+
+<Info>
+  Running `firebase emulators:start` requires **Java**. Install the latest version from the Oracle website, run the installer, and add Java to your `PATH`. This is required even if you already have a Java installation through Eclipse or another IDE.
+</Info>
+
+## Use mock data
+
+The `backend` directory contains pre-populated mock data directories (`emulator_data`, `emulator_data2`, `emulator_data3`, and so on). Pass `--import` to seed the emulators with one of these snapshots on startup.
+
+```bash
+firebase emulators:start --import=./emulator_data --export-on-exit=./emulator_data
+```
+
+- `--import=./emulator_data` — loads the snapshot into the emulators when they start.
+- `--export-on-exit=./emulator_data` — writes any changes back to the same directory when you stop the emulators. Omit this flag if you do not want to persist changes.
+
+Replace `./emulator_data` with any of the available snapshot directories, or with a path to your own custom data directory.
+
+<Warning>
+  Do not commit mock data directories to version control. They may contain user credentials, test email addresses, or other sensitive information you do not want in the repository history.
+</Warning>

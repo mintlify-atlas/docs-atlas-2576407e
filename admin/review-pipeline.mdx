@@ -1,0 +1,139 @@
+---
+title: "Manage the application review pipeline"
+description: "How super reviewers use the pipeline dashboard tabs to track applicants through review, qualified status, interviews, and final decisions."
+---
+
+The review pipeline is the day-to-day working environment for super reviewers during an active recruitment cycle. The dashboard shell lives at `/admin/dor/dashboard/:formId/` and wraps all pipeline tabs in a shared navigation bar with a global search field and admin action buttons.
+
+## Opening a dashboard
+
+From the admin home at `/admin`, click any form row to navigate to its dashboard. The form list is sorted by semester and due date so the current cycle appears at the top. The URL takes the form:
+
+```
+/admin/dor/dashboard/:formId/:tab
+```
+
+Board members navigate to a narrower dashboard at `/admin/board/dashboard/:formId/all`.
+
+## Dashboard tabs
+
+The shell exposes three dropdown menus — **Applications**, **My Assignments**, and **Users** — each containing related tabs.
+
+### Applications
+
+| Tab path | Label | Contents |
+|---|---|---|
+| `.../all` | All Applications | Every non-draft submission for this form, filterable by role |
+| `.../qualified` | Qualified | Applications where `isQualified` is `true` |
+| `.../acceptance-confirmation` | Confirmations | Accepted applicants who have confirmed or declined their offer |
+
+### My Assignments
+
+| Tab path | Label | Contents |
+|---|---|---|
+| `.../assigned-reviews` | Assigned Reviews | Application reviews assigned to the current super reviewer |
+| `.../assigned-interviews` | Assigned Interviews | Interview assignments for the current super reviewer |
+
+### Users
+
+| Tab path | Label | Contents |
+|---|---|---|
+| `.../reviewers` | Reviewers | All reviewer accounts and their assignment status |
+| `.../interviewers` | Interviewers | Interviewers and their assignment status |
+| `.../board` | Board | Board members and the roles they administrate |
+
+## Application status model
+
+Each submitted application generates one `InternalApplicationStatus` record per applied role. This is the record the pipeline operates on.
+
+```typescript types/types.ts
+export type InternalApplicationStatus = {
+  id: string;
+  formId: string;
+  role: ApplicantRole;
+  responseId: string;
+  status: ReviewStatus;
+  isQualified: boolean;
+};
+```
+
+### `ReviewStatus` values
+
+```typescript types/types.ts
+export enum ReviewStatus {
+  NotReviewed = "not-reviewed",
+  UnderReview = "under-review",
+  Reviewed = "reviewed",
+  Interview = "interview",
+  Accepted = "accepted",
+  Denied = "denied",
+  Waitlisted = "waitlist",
+}
+```
+
+| Status | Meaning |
+|---|---|
+| `not-reviewed` | Submitted but no reviewer has started scoring |
+| `under-review` | At least one reviewer assignment exists; scoring is in progress |
+| `reviewed` | All assigned reviewers have submitted their scores |
+| `interview` | Promoted to the interview stage; also set immediately for internal applicants |
+| `accepted` | Board has accepted the applicant |
+| `denied` | Applicant was not selected |
+| `waitlist` | Applicant is on the waitlist |
+
+<Info>
+  Before `decisionsReleased` is `true`, the status endpoint returns a coarsened public status to applicants: `under-review`, `interview`, or `"decided"`. The granular values (`accepted`, `denied`, `waitlist`) are only revealed after decisions are released.
+</Info>
+
+### The `isQualified` flag
+
+Setting `isQualified: true` on an `InternalApplicationStatus` record moves the application into the **Qualified** tab. This is a manual promotion step performed by super reviewers after reviewing scores, indicating the applicant should proceed to the interview stage. Internal applicants are created with `isQualified: true` automatically.
+
+## Admin actions
+
+The dashboard shell toolbar contains a shield icon that opens an **Admin Actions** menu with two destructive operations:
+
+<AccordionGroup>
+  <Accordion title="Deny all undecided applicants">
+    Calls `rejectUndecidedApplicantsForForm`, which sets `ReviewStatus.Denied` on every `InternalApplicationStatus` that does not yet have a final decision. Use this at the end of a cycle to clean up any remaining `under-review` or `reviewed` records before releasing decisions.
+  </Accordion>
+  <Accordion title="Release decisions">
+    Sets `decisionsReleased: true` on the `ApplicationForm` document. Before releasing, the system checks that every `InternalApplicationStatus` for the form has a decided status. If any undecided records remain, the release is blocked with an error.
+
+    To confirm this irreversible action, you must type `"I confirm"` in the confirmation dialog.
+
+    ```typescript pages/super-reviewer/dashboards/SuperReviewerDashboardShell.tsx
+    const statuses = await getAllApplicationStatusesForForm(formId);
+
+    if (statuses.some((s) => !isDecided(s.status))) {
+      throw new Error(
+        "Some applicants have not been decided yet. Can't release decisions.",
+      );
+    }
+
+    await setFormDecisionRelease(formId, released);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+  Releasing decisions is permanent. Once `decisionsReleased` is `true`, applicants can immediately view their outcome. There is no undo.
+</Warning>
+
+## Board view
+
+Board members see a separate dashboard at `/admin/board/dashboard/:formId/all` filtered to their `applicantRoles`. They can view the full application for any applicant in their role pool by navigating to:
+
+```
+/admin/board/application/:formId/:responseId
+```
+
+The `ViewApplicationPage` at this route renders all form sections except those marked `hideFromReviewers: true`, and shows only sections relevant to the roles the applicant applied for.
+
+## Exporting data
+
+The dashboard supports CSV export via the `export-to-csv` frontend dependency. You can export the currently displayed table to a spreadsheet for offline analysis or reporting. Look for the export button in the table header of the relevant dashboard tab.
+
+## Decision confirmation tracking
+
+After decisions are released, accepted applicants confirm or decline their offer. These records appear in the **Confirmations** tab (`/acceptance-confirmation`). The tab shows three summary cards: total confirmations, accepted count, and declined count. Each row links back to the applicant's full application.

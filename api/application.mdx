@@ -1,0 +1,289 @@
+---
+title: "Application API endpoints"
+description: "Endpoints for submitting and saving application form responses, and for uploading application forms, review rubrics, and interview rubrics."
+---
+
+The application routes handle the full lifecycle of an applicant's form response — from in-progress saves to final submission — and provide super-reviewer endpoints for uploading the form definition and the rubrics used during the review pipeline. All routes require a valid Firebase ID token unless noted otherwise.
+
+## POST /application/submit
+
+Finalizes an in-progress application response. The server validates that the submitting user owns the response, that the form's due date has not passed, and that all required questions meet their word-count constraints. On success it sets the response `status` to `"submitted"`, stamps `dateSubmitted`, and creates one `InternalApplicationStatus` record per role applied for.
+
+**Authentication:** `isAuthenticated` · **Role:** `applicant`
+
+### Request body
+
+<ParamField body="id" type="string" required>
+  The ID of the existing application response document to submit.
+</ParamField>
+
+<ParamField body="applicationFormId" type="string" required>
+  The ID of the application form this response belongs to.
+</ParamField>
+
+<ParamField body="userId" type="string" required>
+  The UID of the authenticated user. Must match the token's `uid`.
+</ParamField>
+
+<ParamField body="rolesApplied" type="string[]" required>
+  One or more roles the applicant is applying for. Valid values: `bootcamp`, `engineer`, `designer`, `product`, `tech-lead`, `social-media-manager`, `outreach-coordinator`. The array must be non-empty and must not include roles that are disabled on the form.
+</ParamField>
+
+<ParamField body="sectionResponses" type="object[]" required>
+  Array of section responses, one per form section. At least one section must be provided.
+
+  <Expandable title="SectionResponse properties">
+    <ParamField body="sectionId" type="string" required>
+      ID of the form section being answered.
+    </ParamField>
+    <ParamField body="questions" type="object[]" required>
+      Array of question responses for this section.
+
+      <Expandable title="QuestionResponse properties">
+        <ParamField body="questionId" type="string" required>
+          ID of the question being answered.
+        </ParamField>
+        <ParamField body="questionType" type="string" required>
+          One of `short-answer`, `long-answer`, `multiple-choice`, `multiple-select`, `file-upload`, `role-select`.
+        </ParamField>
+        <ParamField body="applicationFormId" type="string" required>
+          The form ID this question belongs to.
+        </ParamField>
+        <ParamField body="response" type="string | string[]">
+          The applicant's response. May be a single string or an array of strings for multi-select questions.
+        </ParamField>
+      </Expandable>
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="status" type="string" required>
+  Must be `"in-progress"`. The server rejects submissions where the status is anything else.
+</ParamField>
+
+### Responses
+
+<ResponseField name="status" type="string">
+  `"success"` on a successful submission.
+</ResponseField>
+
+<ResponseField name="application" type="object">
+  The updated application response document with `status` set to `"submitted"` and `dateSubmitted` stamped.
+
+  <Expandable title="ApplicationResponse properties">
+    <ResponseField name="id" type="string">Document ID.</ResponseField>
+    <ResponseField name="userId" type="string">Owner's Firebase UID.</ResponseField>
+    <ResponseField name="applicationFormId" type="string">Parent form ID.</ResponseField>
+    <ResponseField name="rolesApplied" type="string[]">Roles applied for.</ResponseField>
+    <ResponseField name="sectionResponses" type="object[]">Submitted section and question responses.</ResponseField>
+    <ResponseField name="status" type="string">`"submitted"`.</ResponseField>
+    <ResponseField name="dateSubmitted" type="Timestamp">Server-side submission timestamp.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Submission deadline has passed, or one or more question responses failed validation (missing required answer, word count out of range, or invalid role). The body includes `{ status: "error", validationErrors: ValidationError[] }`. |
+| 403 | The authenticated user does not own this application response. |
+| 500 | Unexpected server or validation error. |
+
+---
+
+## PUT /application/save/:respId
+
+Saves an in-progress application response without submitting it. The response document must already exist in Firestore; this endpoint does not create new documents.
+
+**Authentication:** `isAuthenticated` · **Role:** `applicant`
+
+### Path parameters
+
+<ParamField path="respId" type="string" required>
+  The ID of the application response to save. Must match the `id` field in the request body.
+</ParamField>
+
+### Request body
+
+<ParamField body="id" type="string" required>
+  Must equal the `:respId` path parameter.
+</ParamField>
+
+<ParamField body="applicationFormId" type="string" required>
+  The ID of the application form this response belongs to.
+</ParamField>
+
+<ParamField body="rolesApplied" type="string[]" required>
+  Roles the applicant intends to apply for.
+</ParamField>
+
+<ParamField body="sectionResponses" type="object[]" required>
+  Current state of all section responses. See the `sectionResponses` schema under `POST /application/submit` for the nested structure.
+</ParamField>
+
+### Responses
+
+Returns `201` with the saved `ApplicationResponse` document body on success.
+
+<ResponseField name="id" type="string">Document ID of the saved response.</ResponseField>
+<ResponseField name="userId" type="string">UID of the authenticated user — set server-side from the token.</ResponseField>
+<ResponseField name="applicationFormId" type="string">Parent form ID.</ResponseField>
+<ResponseField name="rolesApplied" type="string[]">Roles selected so far.</ResponseField>
+<ResponseField name="sectionResponses" type="object[]">Current section and question responses.</ResponseField>
+<ResponseField name="status" type="string">`"in-progress"`.</ResponseField>
+<ResponseField name="dateSubmitted" type="Timestamp">Timestamp of the last save (not a true submission timestamp).</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 400 | The application response document does not exist, or the request body failed schema validation. |
+| 403 | The authenticated user does not own this response. |
+| 500 | The `respId` path parameter does not match the `id` in the body. |
+
+---
+
+## POST /application/forms
+
+Uploads or replaces an application form definition. If a form with the same ID already exists **and** applicant responses reference it, the new form must preserve the same section IDs, section order, question IDs, and question order within each section. The `dueDate` must be a Firestore Timestamp object `{ seconds, nanoseconds }`.
+
+**Authentication:** `isAuthenticated` · **Role:** `super-reviewer`
+
+<Warning>
+  This is a temporary endpoint intended for initial form upload and may be removed once an in-dashboard form editor is available.
+</Warning>
+
+### Request body
+
+The body is an `ApplicationForm` object. Key fields:
+
+<ParamField body="id" type="string" required>
+  Unique form identifier.
+</ParamField>
+
+<ParamField body="isActive" type="boolean" required>
+  Whether the form is currently accepting submissions.
+</ParamField>
+
+<ParamField body="dueDate" type="object" required>
+  Firestore Timestamp: `{ seconds: number, nanoseconds: number }`.
+</ParamField>
+
+<ParamField body="semester" type="string" required>
+  Human-readable semester label, e.g. `"Fall 2025"`.
+</ParamField>
+
+<ParamField body="description" type="string" required>
+  Description shown to applicants on the form landing page.
+</ParamField>
+
+<ParamField body="sections" type="object[]" required>
+  Ordered list of form sections, each containing questions. Section and question IDs must be stable across re-uploads if responses already exist.
+</ParamField>
+
+<ParamField body="decisionsReleased" type="boolean" required>
+  When `true`, applicants can see their full `ReviewStatus`; when `false`, only a coarse public status is shown.
+</ParamField>
+
+<ParamField body="disabledRoles" type="string[]">
+  Optional list of roles that are closed for this cycle and cannot be applied for.
+</ParamField>
+
+### Responses
+
+<ResponseField name="status" type="string">`"success"`.</ResponseField>
+<ResponseField name="formId" type="string">The ID of the created or updated form.</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Invalid `dueDate` format, or the new form changes section/question IDs when existing responses are present. |
+| 500 | Firestore write failure. |
+
+---
+
+## POST /application/rubrics
+
+Replaces all review rubrics for a given form. All rubrics in the payload must share the same `formId`. The operation runs in a Firestore transaction: existing rubrics for the form are deleted and the new ones are written atomically.
+
+**Authentication:** `isAuthenticated` · **Role:** `super-reviewer`
+
+### Request body
+
+An array of `RoleReviewRubric` objects.
+
+<ParamField body="[].id" type="string" required>
+  Unique rubric identifier. Must be non-empty and unique within the payload.
+</ParamField>
+
+<ParamField body="[].formId" type="string" required>
+  The form this rubric belongs to. All rubrics in a single request must share the same `formId`.
+</ParamField>
+
+<ParamField body="[].roles" type="string[]" required>
+  The applicant roles this rubric applies to.
+</ParamField>
+
+<ParamField body="[].rubricQuestions" type="object[]" required>
+  At least one rubric question. Each `scoreKey` must be unique within the rubric.
+
+  <Expandable title="ReviewRubricQuestion properties">
+    <ParamField body="scoreKey" type="string" required>
+      Unique key used to store the score in review records.
+    </ParamField>
+    <ParamField body="prompt" type="string" required>
+      The scoring prompt shown to reviewers.
+    </ParamField>
+    <ParamField body="description" type="string">
+      Optional longer description for the scoring criterion.
+    </ParamField>
+    <ParamField body="maxValue" type="number">
+      Maximum score value (integer, 0–10). Defaults to 4 if omitted.
+    </ParamField>
+    <ParamField body="minValue" type="number">
+      Minimum score value (integer, 0–10). Defaults to 0 if omitted. Must be ≤ `maxValue`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="[].detailLink" type="string">
+  Optional URL to a detailed scoring guide.
+</ParamField>
+
+<ParamField body="[].commentsDescription" type="string">
+  Optional prompt shown above the free-text comments field.
+</ParamField>
+
+### Responses
+
+<ResponseField name="status" type="string">`"success"`.</ResponseField>
+<ResponseField name="count" type="number">Number of rubric documents written.</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Body is not an array, a rubric is missing its `id`, a duplicate `id` appears in the payload, or rubrics span more than one `formId`. |
+| 500 | Firestore transaction failure. |
+
+---
+
+## POST /application/interview-rubrics
+
+Identical in behavior to `POST /application/rubrics` but writes to the `interview-rubrics` Firestore collection instead of `rubrics`. Use this endpoint to upload the rubrics used during the interview scoring phase.
+
+**Authentication:** `isAuthenticated` · **Role:** `super-reviewer`
+
+### Request body
+
+Same schema as `POST /application/rubrics` — an array of `RoleReviewRubric` objects.
+
+### Responses
+
+<ResponseField name="status" type="string">`"success"`.</ResponseField>
+<ResponseField name="count" type="number">Number of interview rubric documents written.</ResponseField>
+
+### Error responses
+
+Same as `POST /application/rubrics`.

@@ -1,0 +1,138 @@
+---
+title: "Configure review and interview rubrics"
+description: "How to use the rubric builder to define rubric question structures, score ranges, and role mappings for application and interview scoring."
+---
+
+The Rubric Builder is a split-pane editor at `/admin/dor/rubric-builder/:formId`. Like the Form Builder, it presents a JSON editor on the left and a rendered rubric preview on the right. You can toggle between the **Application** rubric type and the **Interview** rubric type using the toggle group at the top of the page. Each type is stored in a separate Firestore collection (`rubrics` and `interview-rubrics`).
+
+When you open the Rubric Builder for a form, the editor pre-populates with the rubrics already stored for that form and the selected type.
+
+## `RoleReviewRubric` structure
+
+A single rubric document applies to one or more applicant roles and contains a list of scoring criteria.
+
+```typescript types/types.ts
+export type RoleReviewRubric = {
+  id: string;
+  formId: string;
+  roles: ApplicantRole[];
+  rubricQuestions: ReviewRubricQuestion[];
+  detailLink?: string;
+  commentsDescription?: string;
+};
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Unique identifier for this rubric document. Must be unique across the entire upload payload. |
+| `formId` | `string` | ID of the `ApplicationForm` this rubric belongs to. All rubrics in a single upload must share the same `formId`. |
+| `roles` | `ApplicantRole[]` | Which applicant roles this rubric applies to. A single rubric can cover multiple roles if the criteria are shared. |
+| `rubricQuestions` | `ReviewRubricQuestion[]` | Ordered list of scoring questions shown to reviewers. |
+| `detailLink` | `string` | Optional URL linking reviewers to a role-specific guidelines page. |
+| `commentsDescription` | `string` | Optional label rendered above the free-text comments field. |
+
+## `ReviewRubricQuestion` structure
+
+Each question in a rubric represents one scoring dimension.
+
+```typescript types/types.ts
+export type ReviewRubricQuestion = {
+  scoreKey: string;
+  prompt: string;
+  description?: string;
+  maxValue?: number; // default 4
+  minValue?: number; // default 0
+};
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `scoreKey` | `string` | — | Machine-readable key stored in `applicantScores` / `interviewScores` on review records. Must match a key in the corresponding `scoreWeights` map on the form. |
+| `prompt` | `string` | — | Question text displayed to the reviewer. |
+| `description` | `string` | — | Optional guidance text displayed below the prompt. |
+| `maxValue` | `number` | `4` | Upper bound of the score range. |
+| `minValue` | `number` | `0` | Lower bound of the score range. |
+
+## Application rubrics vs. interview rubrics
+
+The Rubric Builder manages two distinct rubric types for each form.
+
+| Type | Endpoint | Firestore collection | Form weight field |
+|---|---|---|---|
+| Application | `POST /application/rubrics` | `rubrics` | `scoreWeights` |
+| Interview | `POST /application/interview-rubrics` | `interview-rubrics` | `interviewScoreWeights` |
+
+Both endpoints use the same `RoleReviewRubric` schema and behave identically: they accept an array of rubrics and replace all existing rubrics for the form in a single Firestore transaction.
+
+## Score key alignment
+
+Every `scoreKey` in a rubric must have a corresponding entry in the matching weight map on the `ApplicationForm`. The Rubric Builder cross-references the loaded form and highlights mismatches in two categories:
+
+- **Missing in form** — a `scoreKey` is present in the rubrics but has no weight defined on the form.
+- **Missing in rubric** — a weight key is defined on the form but no rubric question uses it.
+
+```typescript pages/super-reviewer/RubricBuilderPage.tsx
+if (form) {
+  const warnings = validateRubricScoreKeys(
+    parsed,
+    form,
+    rubricType === "interview",
+  );
+  setValidationWarnings(warnings);
+}
+```
+
+<Warning>
+  Both types of mismatch generate a confirmation prompt before upload, but neither blocks the upload. Review warnings carefully — unmatched score keys will cause reviewer scores to be silently omitted from the final ranking calculation.
+</Warning>
+
+## Uploading rubrics
+
+<Steps>
+  <Step title="Select the rubric type">
+    Use the **Application** / **Interview** toggle at the top of the page to choose which set of rubrics to edit.
+  </Step>
+  <Step title="Edit the JSON">
+    Paste or modify the rubric array in the left-hand editor. Enable **Auto-compile** or click **Compile** to render the preview.
+  </Step>
+  <Step title="Resolve validation warnings">
+    After compiling, address any score key mismatches flagged in the preview panel before uploading.
+  </Step>
+  <Step title="Click Upload Rubrics">
+    The editor calls the appropriate endpoint with your auth token. The backend validates for duplicate rubric IDs and rejects payloads that span more than one `formId`.
+  </Step>
+</Steps>
+
+<Note>
+  Uploading rubrics **replaces all existing rubrics** for the form in a single atomic transaction. Partial updates are not supported — always include the complete set of rubrics in your payload.
+</Note>
+
+## Example rubric payload
+
+```json
+[
+  {
+    "id": "rubric-engineer-fall25",
+    "formId": "fall-2025",
+    "roles": ["engineer"],
+    "detailLink": "https://notion.so/engineer-rubric-guide",
+    "commentsDescription": "General notes on the applicant's technical background",
+    "rubricQuestions": [
+      {
+        "scoreKey": "technical",
+        "prompt": "Technical ability",
+        "description": "Evaluate the quality and depth of the applicant's project descriptions.",
+        "minValue": 0,
+        "maxValue": 4
+      },
+      {
+        "scoreKey": "communication",
+        "prompt": "Communication",
+        "description": "How clearly does the applicant express their ideas in writing?",
+        "minValue": 0,
+        "maxValue": 4
+      }
+    ]
+  }
+]
+```

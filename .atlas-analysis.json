@@ -1,0 +1,111 @@
+{
+  "projectType": "saas",
+  "projectName": "Hack4Impact Application Portal",
+  "projectDescription": "A full-stack web application for Hack4Impact-UMD that streamlines the club membership application process — enabling applicants to apply for roles, reviewers to score submissions, and admins to manage the entire recruitment pipeline.",
+  "theme": "almond",
+  "primaryColor": "#1d70bd",
+  "lightColor": "#83d3cc",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "User Guide",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "user-roles"
+            ]
+          },
+          {
+            "group": "Applicants",
+            "pages": [
+              "applicants/getting-started",
+              "applicants/submitting-application",
+              "applicants/tracking-status",
+              "applicants/decisions"
+            ]
+          },
+          {
+            "group": "Reviewers",
+            "pages": [
+              "reviewers/dashboard",
+              "reviewers/reviewing-applications",
+              "reviewers/conducting-interviews"
+            ]
+          },
+          {
+            "group": "Admin",
+            "pages": [
+              "admin/overview",
+              "admin/form-builder",
+              "admin/rubric-builder",
+              "admin/managing-users",
+              "admin/review-pipeline"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Developer Guide",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "development/local-setup",
+              "development/firebase-emulators",
+              "development/project-structure"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "development/data-model",
+              "development/authentication",
+              "development/data-fetching"
+            ]
+          },
+          {
+            "group": "Backend API",
+            "pages": [
+              "api/application",
+              "api/review",
+              "api/interview",
+              "api/grading",
+              "api/status-auth"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Role-based access control with four permission levels: Applicant, Reviewer, Board, and Super Reviewer",
+    "Dynamic application form builder with support for short answer, long answer, multiple choice, file upload, and role-select questions",
+    "Review pipeline with rubric-based scoring, reviewer assignment, and interview scheduling",
+    "Automated grading integration via the Professor autograder service for engineering assessments",
+    "Application status tracking with configurable decision letter release",
+    "Internal applicant workflow allowing club members to bypass the standard review process",
+    "Firebase-backed architecture with Firestore, Authentication, Cloud Functions, and Cloud Tasks"
+  ],
+  "publicApiSurface": [
+    "POST /application/submit — Submit a completed application",
+    "PUT /application/save/:respId — Save application progress",
+    "POST /application/forms — Upload application form (SuperReviewer only)",
+    "POST /application/rubrics — Upload review rubrics",
+    "POST /application/interview-rubrics — Upload interview rubrics",
+    "POST /review/review — Create a new application review",
+    "PUT /review/review/:id — Update a review",
+    "DELETE /review/review/:id — Delete a review",
+    "POST /interview/ — Create an interview record",
+    "PUT /interview/:id — Update an interview record",
+    "DELETE /interview/:id — Delete an interview record",
+    "GET /status/:responseId/:role — Get application status for a role",
+    "POST /status/decision — Confirm acceptance decision",
+    "POST /grading/submit — Submit an autograder job",
+    "POST /auth/register — Register a new user",
+    "POST /auth/update — Update user profile",
+    "POST /auth/create-internal-applicant — Create internal applicant (SuperReviewer only)"
+  ]
+}

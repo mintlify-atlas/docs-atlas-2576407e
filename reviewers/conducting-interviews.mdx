@@ -1,0 +1,139 @@
+---
+title: "Conduct and score candidate interviews"
+description: "View your interview assignments, open the interview scoring page, enter scores and notes against the interview rubric, and submit your feedback."
+---
+
+Interviews are the second stage of the application pipeline. Only applicants whose internal status has been set to `ReviewStatus.Interview` by an admin appear in the **Assigned Interviews** tab. When an interview is assigned to you, an `InterviewAssignment` record is created linking your account to the applicant's submitted response. You open the interview page, score the candidate against the interview rubric, and submit your feedback.
+
+## Who appears in the interviews tab
+
+The interviews dashboard only shows applicants who have reached the interview stage. This is controlled by the `ReviewStatus` on the applicant's `InternalApplicationStatus` record:
+
+```typescript types.ts
+export enum ReviewStatus {
+  NotReviewed = "not-reviewed",
+  UnderReview = "under-review",
+  Reviewed = "reviewed",
+  Interview = "interview",   // only applicants at this status appear in interviews
+  Accepted = "accepted",
+  Denied = "denied",
+  Waitlisted = "waitlist",
+}
+```
+
+<Info>
+  Advancing an applicant to interview status is an admin action. If you expect to see an applicant in your interviews list but they are missing, ask a board member or super reviewer to check the applicant's status.
+</Info>
+
+## Interview assignments
+
+Each interview you are assigned is represented by an `InterviewAssignment` object:
+
+```typescript types.ts
+export type InterviewAssignment = {
+  id: string;
+  assignmentType: "interview";
+  formId: string;
+  interviewerId: string;
+  applicantId: string;
+  applicationResponseId: string;
+  forRole: ApplicantRole;
+};
+```
+
+All your assignments for the active form appear in the **Assigned Interviews** tab of the reviewer dashboard. The three summary cards show:
+
+- **Interviews** — total assigned
+- **Completed** — assignments where a submitted `ApplicationInterviewData` exists
+- **Pending** — assignments not yet submitted
+
+## Opening the interview page
+
+Click a row in the Assigned Interviews table to open the interview scoring page at:
+
+```
+/admin/interview/f/:formId/:responseId/:interviewDataId
+```
+
+The three URL segments are:
+
+| Segment | Description |
+| --- | --- |
+| `formId` | The active application form |
+| `responseId` | The applicant's submitted `ApplicationResponse` |
+| `interviewDataId` | Your `ApplicationInterviewData` record for this assignment |
+
+## The interview page layout
+
+The interview page is structurally identical to the application review page: a resizable split view with the applicant's form responses on the left and the interview rubric on the right.
+
+<CardGroup cols={2}>
+  <Card title="Left panel — application" icon="file">
+    Read-only view of the applicant's submitted responses. Sections with `hideFromReviewers: true` are hidden, and role-specific sections filter by the applicant's applied roles.
+  </Card>
+  <Card title="Right panel — interview rubric" icon="list-checks">
+    One or more interview rubric cards. Enter a numeric score for each question and optional notes. Scores are saved when you submit; notes autosave after one second of inactivity.
+  </Card>
+</CardGroup>
+
+Press `Cmd+K` (or `Ctrl+K`) to open the section jump palette and scroll to any section of the form by name.
+
+## The `ApplicationInterviewData` structure
+
+Your interview scores and notes are stored in a single `ApplicationInterviewData` document:
+
+```typescript types.ts
+export interface ApplicationInterviewData {
+  id: string;
+  interviewerId: string;
+  applicationFormId: string;
+  applicationResponseId: string;
+  applicantId: string;
+  interviewScores: Record<string, number>;   // keyed by rubric scoreKey
+  interviewerNotes: Record<string, string>;  // keyed by rubric scoreKey
+  forRole: ApplicantRole;
+  submitted: boolean;
+}
+```
+
+`interviewScores` and `interviewerNotes` are both plain objects keyed by the `scoreKey` of each `ReviewRubricQuestion` in the interview rubric. The same rubric type (`RoleReviewRubric`) is used for both application reviews and interviews.
+
+## Filling in interview scores and notes
+
+For each question in the interview rubric:
+
+1. Enter a numeric score within the `minValue`–`maxValue` range defined on the question (default 0–4).
+2. Optionally type notes in the comment field below each score.
+
+Notes autosave one second after you stop typing. The header displays **Last saved [time]** or **Not saved** depending on autosave state.
+
+<Warning>
+  Only notes autosave. Score selections are not persisted until you submit. Do not close or navigate away from the page before submitting.
+</Warning>
+
+The running **Interview Score** shown in the header is a weighted aggregate based on `interviewScoreWeights` configured on the form — it updates as you enter scores and gives you a preview before submission.
+
+## Submitting interview feedback
+
+<Steps>
+  <Step title="Score every rubric question">
+    Each `scoreKey` from every interview rubric question must have an entry in `interviewScores`. If any key is missing, the portal shows an error toast and blocks submission.
+  </Step>
+  <Step title="Click Submit Interview">
+    Click the **Submit Interview** button in the blue header bar at the top of the page.
+  </Step>
+  <Step title="Confirm in the dialog">
+    The confirmation dialog reads "You will not be able to edit it after submission." Click **Confirm** to finalize.
+  </Step>
+  <Step title="Feedback saved">
+    A success toast confirms the submission and the portal navigates back to your dashboard. The assignment moves from **Pending** to **Completed** in the summary cards.
+  </Step>
+</Steps>
+
+<Warning>
+  Submitted interviews are locked. Once `submitted` is `true`, all score inputs and note fields become disabled. Contact a super reviewer if you need to amend a submitted interview.
+</Warning>
+
+## Internal applicants
+
+Applicants with `isInternal: true` on their profile are returning club members who skip the standard application review and enter the pipeline directly at the interview stage. The interview page header displays an **INTERNAL** badge next to their name so you can identify them quickly.

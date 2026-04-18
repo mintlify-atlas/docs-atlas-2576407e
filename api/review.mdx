@@ -1,0 +1,160 @@
+---
+title: "Review API endpoints"
+description: "Endpoints for creating, updating, and deleting application review records submitted by reviewers and super-reviewers during the review pipeline."
+---
+
+The review routes manage `ApplicationReviewData` documents stored in the `review-data` Firestore collection. Each review ties together one reviewer, one application response, and one applicant role. A reviewer can have at most one review per reviewer–response–role combination; the document ID is derived from these three values.
+
+## POST /review/review
+
+Creates a new review record. If a review already exists for the same reviewer, application response, and role combination, the request is rejected with a `400`.
+
+**Authentication:** `isAuthenticated` · **Roles:** `reviewer`, `super-reviewer`
+
+### Request body
+
+<ParamField body="reviewerId" type="string" required>
+  The UID of the reviewer submitting this review.
+</ParamField>
+
+<ParamField body="applicationFormId" type="string" required>
+  The ID of the application form associated with the response being reviewed.
+</ParamField>
+
+<ParamField body="applicationResponseId" type="string" required>
+  The ID of the application response being reviewed.
+</ParamField>
+
+<ParamField body="applicantId" type="string" required>
+  The UID of the applicant whose response is being reviewed.
+</ParamField>
+
+<ParamField body="applicantScores" type="object" required>
+  A map of score category keys to numeric scores. Keys correspond to the `scoreKey` values defined in the form's review rubric. Each score must be between `0` and `10`.
+
+  ```json
+  {
+    "technicalSkill": 8,
+    "communication": 6
+  }
+  ```
+</ParamField>
+
+<ParamField body="reviewerNotes" type="string[]">
+  Optional array of free-text notes from the reviewer.
+</ParamField>
+
+<ParamField body="forRole" type="string" required>
+  The role being reviewed. One of `bootcamp`, `engineer`, `designer`, `product`, `tech-lead`, `social-media-manager`, `outreach-coordinator`.
+</ParamField>
+
+### Responses
+
+Returns `201` with the created `ApplicationReviewData` document on success.
+
+<ResponseField name="id" type="string">
+  The generated review ID, formed as `{reviewerId}_{applicationResponseId}_{forRole}`.
+</ResponseField>
+
+<ResponseField name="reviewerId" type="string">Reviewer's UID.</ResponseField>
+
+<ResponseField name="applicationFormId" type="string">Parent form ID.</ResponseField>
+
+<ResponseField name="applicationResponseId" type="string">ID of the reviewed response.</ResponseField>
+
+<ResponseField name="applicantId" type="string">Applicant's UID.</ResponseField>
+
+<ResponseField name="applicantScores" type="object">Map of score category keys to numeric scores.</ResponseField>
+
+<ResponseField name="reviewerNotes" type="string[]">Optional reviewer notes.</ResponseField>
+
+<ResponseField name="forRole" type="string">The applicant role this review covers.</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 400 | A review already exists for this reviewer–response–role combination, or the request body failed schema validation. |
+| 500 | Firestore write failure. |
+
+---
+
+## PUT /review/review/:id
+
+Updates an existing review record. The `id`, `reviewerId`, and `applicationResponseId` fields are protected and cannot be changed; if included in the body they are silently removed before the update is applied.
+
+**Authentication:** `isAuthenticated` · **Roles:** `reviewer`, `super-reviewer`
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The ID of the review document to update.
+</ParamField>
+
+### Request body
+
+A partial `ApplicationReviewData` object. All fields are optional. Protected fields (`id`, `reviewerId`, `applicationResponseId`) are ignored if included.
+
+<ParamField body="applicantScores" type="object">
+  Updated map of score category keys to numeric scores (0–10 each).
+</ParamField>
+
+<ParamField body="reviewerNotes" type="string[]">
+  Updated reviewer notes.
+</ParamField>
+
+<ParamField body="forRole" type="string">
+  The role being reviewed.
+</ParamField>
+
+<ParamField body="applicantId" type="string">
+  The applicant's UID.
+</ParamField>
+
+<ParamField body="applicationFormId" type="string">
+  The parent form ID.
+</ParamField>
+
+### Responses
+
+Returns `200` on success.
+
+<ResponseField name="message" type="string">
+  `"Review updated successfully"`.
+</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 404 | No review document found for the given `:id`. |
+| 500 | Firestore update failure. |
+
+---
+
+## DELETE /review/review/:id
+
+Permanently deletes a review document. Returns `404` if no document exists for the given ID.
+
+**Authentication:** `isAuthenticated` · **Roles:** `reviewer`, `super-reviewer`
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The ID of the review document to delete.
+</ParamField>
+
+### Responses
+
+Returns `200` on success.
+
+<ResponseField name="message" type="string">
+  `"Review deleted successfully"`.
+</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 404 | No review document found for the given `:id`. |
+| 500 | Firestore delete failure. |

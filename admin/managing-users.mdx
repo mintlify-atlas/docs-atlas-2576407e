@@ -1,0 +1,125 @@
+---
+title: "Manage user roles and permissions"
+description: "How super reviewers assign permission roles, configure reviewer preferences, create internal applicants, and deactivate user accounts."
+---
+
+User management is accessible to super reviewers from the admin home at `/admin`. Clicking **Manage Users** navigates to `/admin/dor/users`, which displays the full `UserRolePage` with a searchable table of every registered account. From this page you can promote users to any permission role, adjust active status, and bulk-delete accounts.
+
+## Permission roles
+
+Every user account has exactly one `PermissionRole`. New registrations are always assigned the `applicant` role by default; higher privileges must be granted by a super reviewer.
+
+```typescript types/types.ts
+export enum PermissionRole {
+  SuperReviewer = "super-reviewer",
+  Reviewer = "reviewer",
+  Board = "board",
+  Applicant = "applicant",
+}
+```
+
+| Role | Access |
+|---|---|
+| `super-reviewer` | Full admin panel, form builder, rubric builder, all dashboards, user management |
+| `reviewer` | Assigned review dashboard, reviewer assignments |
+| `board` | Board dashboard at `/admin/board/dashboard/:formId/all` for their administered roles |
+| `applicant` | Application portal only |
+
+<Info>
+  The `super-reviewer` route resolves to `"dor"` in the admin navigation, so super reviewers reach dashboards at `/admin/dor/dashboard/:formId/`. Reviewers use `"/admin/reviewer/dashboard/:formId/apps"` and board members use `"/admin/board/dashboard/:formId/all"`.
+</Info>
+
+## User profile types
+
+Each role has a distinct profile shape that extends `IUserProfile`.
+
+### `ReviewerUserProfile`
+
+```typescript types/types.ts
+export interface ReviewerUserProfile extends IUserProfile {
+  role: PermissionRole.Reviewer;
+  applicantRolePreferences: ApplicantRole[];
+}
+```
+
+`applicantRolePreferences` lists the `ApplicantRole` values this reviewer prefers to evaluate. The assignment system uses these preferences when distributing applications.
+
+### `BoardUserProfile`
+
+```typescript types/types.ts
+export interface BoardUserProfile extends IUserProfile {
+  role: PermissionRole.Board;
+  applicantRoles: ApplicantRole[];
+}
+```
+
+`applicantRoles` lists the roles this board member administrates. The board dashboard filters the application list to only show applications for these roles.
+
+### `IUserProfile` base fields
+
+```typescript types/types.ts
+export interface IUserProfile {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: PermissionRole;
+  dateCreated: Timestamp;
+  inactive?: boolean;
+}
+```
+
+Setting `inactive` to `true` deactivates the account. An inactive user is excluded from assignment pools and reviewer lists. The `UserRolePage` exposes a toggle to set this flag without deleting the account.
+
+## Promoting users
+
+From the user table at `/admin/dor/users`:
+
+<Steps>
+  <Step title="Select accounts">
+    Check the boxes next to the user or users you want to update.
+  </Step>
+  <Step title="Choose a role">
+    Use the role dropdown in the table toolbar to select the target `PermissionRole`.
+  </Step>
+  <Step title="Apply">
+    The mutation calls `updateUserRoles` in the background. The table updates optimistically and rolls back if the request fails.
+  </Step>
+</Steps>
+
+## Creating internal applicants
+
+Existing club members who are reapplying do not go through the standard application review process. A super reviewer can create an **internal applicant** record that bypasses the review queue entirely and places the applicant directly into interview status.
+
+To create an internal applicant, use the **Create Internal Applicant** dialog on the admin home page. This calls `POST /auth/create-internal-applicant` (super-reviewer only).
+
+```typescript backend/functions/src/routes/auth.ts
+const newStatus: InternalApplicationStatus = {
+  id: statusId,
+  formId: requestData.formId,
+  role: role,
+  responseId: applicationResponseId,
+  status: ReviewStatus.Interview,
+  isQualified: true
+};
+```
+
+The endpoint creates three records in a single Firestore batch:
+
+1. A user document with `isInternal: true` and `role: "applicant"`.
+2. An `ApplicationResponse` with `status: ApplicationStatus.Submitted`.
+3. One `InternalApplicationStatus` per applied role, with `status: ReviewStatus.Interview` and `isQualified: true`.
+
+<Note>
+  Internal applicants are given a placeholder email address and do not have a Firebase Auth record. Any code that manipulates both the Firestore user document and Firebase Auth together must account for this.
+</Note>
+
+<Warning>
+  Only users with the `super-reviewer` role can call `POST /auth/create-internal-applicant`. The endpoint returns `403` if the requestor's role is anything else.
+</Warning>
+
+## Deactivating users
+
+To prevent a user from being assigned reviews or appearing in dashboards without permanently deleting their account, set the `inactive` flag to `true` from the user table. The toggle calls `updateUserActiveStatus` on the service layer and invalidates the `["users", "all"]` and `["reviewers"]` query caches on settlement.
+
+To permanently remove accounts, select the rows and use the **Delete** action. Deletion is performed in bulk via `deleteUsers`.

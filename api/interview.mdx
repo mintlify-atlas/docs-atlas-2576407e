@@ -1,0 +1,144 @@
+---
+title: "Interview API endpoints"
+description: "Create, update, and delete interview records in the interview-data Firestore collection. Requires reviewer or super-reviewer role for all endpoints."
+---
+
+The interview routes manage `InterviewData` documents in the `interview-data` Firestore collection. Each record captures the outcome of one interviewer's session with one applicant. The document ID is derived from the reviewer and application IDs, ensuring at most one interview record per interviewer–application pair.
+
+## POST /interview/
+
+Creates a new interview record. If an interview already exists for the same reviewer–application pair, the request is rejected.
+
+**Authentication:** `isAuthenticated` · **Roles:** `reviewer`, `super-reviewer`
+
+### Request body
+
+<ParamField body="applicationId" type="string" required>
+  The ID of the application response this interview is for.
+</ParamField>
+
+<ParamField body="reviewerId" type="string" required>
+  The UID of the interviewer conducting this interview.
+</ParamField>
+
+<ParamField body="interviewDate" type="string" required>
+  ISO 8601 datetime string for when the interview is scheduled or took place, e.g. `"2025-10-01T14:00:00.000Z"`.
+</ParamField>
+
+<ParamField body="status" type="string" required>
+  Current status of the interview. One of `scheduled`, `completed`, `cancelled`.
+</ParamField>
+
+<ParamField body="notes" type="string">
+  Optional free-text notes from the interviewer.
+</ParamField>
+
+### Responses
+
+Returns `201` with the created `InterviewData` document on success.
+
+<ResponseField name="id" type="string">
+  The generated interview ID, formed as `{reviewerId}_{applicationId}`.
+</ResponseField>
+
+<ResponseField name="applicationId" type="string">ID of the associated application response.</ResponseField>
+
+<ResponseField name="reviewerId" type="string">Interviewer's UID.</ResponseField>
+
+<ResponseField name="interviewDate" type="string">ISO 8601 datetime of the interview.</ResponseField>
+
+<ResponseField name="status" type="string">
+  One of `scheduled`, `completed`, `cancelled`.
+</ResponseField>
+
+<ResponseField name="notes" type="string">Interviewer notes, if provided.</ResponseField>
+
+<ResponseField name="createdAt" type="string">ISO 8601 server-generated creation timestamp.</ResponseField>
+
+<ResponseField name="updatedAt" type="string">ISO 8601 server-generated last-update timestamp (same as `createdAt` at creation time).</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 400 | An interview already exists for this reviewer–application pair, or the request body failed schema validation. |
+| 500 | Firestore write failure. |
+
+---
+
+## PUT /interview/:id
+
+Updates an existing interview record. The server merges the provided fields into the existing document and updates `updatedAt` automatically.
+
+**Authentication:** `isAuthenticated` · **Roles:** `reviewer`, `super-reviewer`
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The ID of the interview document to update.
+</ParamField>
+
+### Request body
+
+All fields are optional. Only provided fields are changed; omitted fields retain their existing values.
+
+<ParamField body="interviewDate" type="string">
+  Updated ISO 8601 datetime string.
+</ParamField>
+
+<ParamField body="status" type="string">
+  Updated interview status. One of `scheduled`, `completed`, `cancelled`.
+</ParamField>
+
+<ParamField body="notes" type="string">
+  Updated interviewer notes.
+</ParamField>
+
+### Responses
+
+Returns `200` with the full updated `InterviewData` document on success.
+
+<ResponseField name="id" type="string">Interview document ID.</ResponseField>
+<ResponseField name="applicationId" type="string">ID of the associated application response.</ResponseField>
+<ResponseField name="reviewerId" type="string">Interviewer's UID.</ResponseField>
+<ResponseField name="interviewDate" type="string">Updated interview datetime.</ResponseField>
+<ResponseField name="status" type="string">Updated status.</ResponseField>
+<ResponseField name="notes" type="string">Updated notes.</ResponseField>
+<ResponseField name="createdAt" type="string">Original creation timestamp (unchanged).</ResponseField>
+<ResponseField name="updatedAt" type="string">ISO 8601 timestamp of this update, set server-side.</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 404 | No interview document found for the given `:id`. |
+| 500 | Firestore update failure. |
+
+---
+
+## DELETE /interview/:id
+
+Permanently deletes an interview document.
+
+**Authentication:** `isAuthenticated` · **Roles:** `reviewer`, `super-reviewer`
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The ID of the interview document to delete.
+</ParamField>
+
+### Responses
+
+Returns `200` on success.
+
+<ResponseField name="message" type="string">
+  `"Interview deleted successfully"`.
+</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 404 | No interview document found for the given `:id`. |
+| 500 | Firestore delete failure. |

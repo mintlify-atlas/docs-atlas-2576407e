@@ -1,0 +1,109 @@
+---
+title: "Grading API — autograder job submission"
+description: "Submit autograder jobs via POST /grading/submit, track the nine GradingJobStatus states, and understand the Firestore documents created per job."
+---
+
+The grading route integrates with the Professor autograder service. When an applicant submits a repository URL, the backend creates two Firestore documents — one public-facing and one internal — then publishes a Cloud Tasks job that triggers the autograder worker. The worker processes the job asynchronously and writes progress and results back to Firestore; the client polls the public document to display status and scores.
+
+## Job lifecycle
+
+A grading job transitions through the following `GradingJobStatus` states:
+
+| Status | Description |
+|--------|-------------|
+| `queued` | Job has been created and the Cloud Tasks message has been published. |
+| `pending` | Worker has picked up the task and is preparing to run. |
+| `cloning` | Worker is cloning the applicant's repository. |
+| `installing` | Worker is installing project dependencies. |
+| `building` | Worker is compiling or building the project. |
+| `serving` | Worker is starting the application server. |
+| `testing` | Worker is executing the Playwright test suite. |
+| `completed` | All tests have finished and scores have been written. |
+| `failed` | The job encountered an unrecoverable error. |
+
+Only `completed` and `failed` are terminal states. A new job cannot be submitted for a response that has an existing job in any non-terminal state (see the 409 response below).
+
+---
+
+## POST /grading/submit
+
+Submits a new autograder job for an application response. The server validates ownership, checks for existing running jobs, creates the Firestore documents inside a transaction, and then publishes a Cloud Tasks message.
+
+**Authentication:** `isAuthenticated` · **Roles:** `applicant`, `board`, `super-reviewer`
+
+<Note>
+  Applicants may only submit jobs for responses they own. Board members and super-reviewers may submit on behalf of any applicant.
+</Note>
+
+### Request body
+
+<ParamField body="responseId" type="string" required>
+  The ID of the application response to grade. The response document must exist in Firestore.
+</ParamField>
+
+<ParamField body="repoURL" type="string" required>
+  The GitHub repository URL to grade. Must follow the format `https://github.com/USER/REPO` (exactly two path segments, HTTPS protocol, `github.com` or `www.github.com` host).
+</ParamField>
+
+### Responses
+
+Returns `200` on success.
+
+<ResponseField name="status" type="string">`"success"`.</ResponseField>
+
+<ResponseField name="message" type="string">`"Grading job queued successfully"`.</ResponseField>
+
+<ResponseField name="jobId" type="string">
+  UUID of the created grading job. Use this ID to look up the public job document in the `grading-jobs-public` collection to track progress.
+</ResponseField>
+
+### Firestore documents created
+
+Two documents are written atomically in a single transaction.
+
+**`grading-jobs-public/{jobId}`** — readable by the client to track progress:
+
+<ResponseField name="id" type="string">Job UUID.</ResponseField>
+<ResponseField name="responseId" type="string">The application response ID.</ResponseField>
+<ResponseField name="repoURL" type="string">The repository URL submitted by the applicant.</ResponseField>
+<ResponseField name="status" type="string">Initial value: `"queued"`.</ResponseField>
+<ResponseField name="score" type="number">Aggregate score, initially `0`.</ResponseField>
+<ResponseField name="totalTests" type="number">Total test count, populated by the worker.</ResponseField>
+<ResponseField name="completedTests" type="number">Tests completed so far, initially `0`.</ResponseField>
+<ResponseField name="started" type="Timestamp">Firestore Timestamp of job creation.</ResponseField>
+<ResponseField name="updated" type="Timestamp">Last-updated Timestamp, initially the same as `started`.</ResponseField>
+<ResponseField name="publicTests" type="object">
+  Map of suite names to `PublicTestResult` objects, populated by the worker as tests complete.
+
+  <Expandable title="PublicTestResult properties">
+    <ResponseField name="suiteName" type="string">Test suite name.</ResponseField>
+    <ResponseField name="passed" type="number">Number of passing tests in the suite.</ResponseField>
+    <ResponseField name="failed" type="number">Number of failing tests in the suite.</ResponseField>
+    <ResponseField name="total" type="number">Total tests in the suite.</ResponseField>
+    <ResponseField name="durationMs" type="number">Suite runtime in milliseconds.</ResponseField>
+    <ResponseField name="points" type="number">Points earned in this suite.</ResponseField>
+    <ResponseField name="totalPoints" type="number">Maximum points available in this suite.</ResponseField>
+  </Expandable>
+</ResponseField>
+<ResponseField name="error" type="string">Error message, set only when `status` is `"failed"`.</ResponseField>
+<ResponseField name="completed" type="Timestamp">Completion Timestamp, set only when the job is done.</ResponseField>
+
+**`grading-jobs-internal/{jobId}`** — internal diagnostics, not exposed to clients:
+
+<ResponseField name="id" type="string">Same job UUID.</ResponseField>
+<ResponseField name="testRepo" type="string">URL of the test repository used by the autograder worker.</ResponseField>
+<ResponseField name="buildLog" type="string">Build output log, populated by the worker.</ResponseField>
+<ResponseField name="installLog" type="string">Dependency installation log.</ResponseField>
+<ResponseField name="playwrightLog" type="string">Playwright runner log.</ResponseField>
+<ResponseField name="tests" type="object">Map of suite names to arrays of detailed `TestResult` objects.</ResponseField>
+<ResponseField name="error" type="string">Internal error detail, if any.</ResponseField>
+
+### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 401 | The authenticated user could not be resolved from the token. |
+| 403 | The authenticated user does not own the response and does not have a `board` or `super-reviewer` role. |
+| 404 | No application response document found for `responseId`. |
+| 409 | A grading job is already in progress for this response (status is not `completed` or `failed`). |
+| 500 | Firestore transaction failure or Cloud Tasks publish failure. |

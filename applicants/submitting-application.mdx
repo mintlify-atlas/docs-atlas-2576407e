@@ -1,0 +1,111 @@
+---
+title: "Complete and submit your application"
+description: "Navigate the multi-section form, select your roles, respect word count limits, and submit before the deadline to send your application to reviewers."
+---
+
+After clicking **Apply** on the Overview page, the portal loads the full application form. The form is divided into multiple sections, and a timeline at the top of the page lets you see every section and jump between them. This page explains how each part of the form works and what happens when you click **Submit**.
+
+## Navigating the form
+
+The application is structured as a series of sections. A horizontal **timeline** at the top of each section page shows your position in the form. You can click any step in the timeline to jump directly to that section.
+
+Use the **Back** and **Next** buttons at the bottom of each section to move sequentially. When you reach the last available section, the **Next** button is replaced by a **Submit** button that takes you to the review screen.
+
+<Note>
+  The **Back** button is disabled on the very first section. You cannot navigate before the start of the form.
+</Note>
+
+## Auto-save
+
+Every time you click **Next** or **Back**, the portal automatically saves your current section to the server (`PUT /application/save/:respId`). Your progress is preserved even if you close the browser and return later. Your application status stays as `in-progress` until you complete the final submission step.
+
+<Tip>
+  The portal displays a toast reminding you to back up your application each time you advance to the next section. Copy your longer responses into a separate document as a precaution.
+</Tip>
+
+## Selecting your roles
+
+One section in the application contains a **Role Select** question. This is the most important question in the form — your answer controls which role-specific sections are visible to you.
+
+<Steps>
+  <Step title="Find the role selection question">
+    The role selection question appears in one of the early sections. It lists all available roles for this application cycle.
+  </Step>
+  <Step title="Choose at least one role">
+    Select every role you want to be considered for. You must choose at least one role or the form will not submit.
+  </Step>
+  <Step title="Complete role-specific sections">
+    After selecting your roles, the timeline updates to include any sections that are specific to those roles. Complete each one before submitting.
+  </Step>
+</Steps>
+
+<Warning>
+  If a role is shown as disabled, do not select it. Submitting with a disabled role will result in a validation error and your application will not be accepted.
+</Warning>
+
+## Question types
+
+The application may contain any of the following question types:
+
+<AccordionGroup>
+  <Accordion title="Short answer">
+    A single-line text field for brief responses. Short answer questions do not have word count limits.
+  </Accordion>
+  <Accordion title="Long answer">
+    A multi-line text area for detailed responses. Long answer questions may have a **minimum word count**, a **maximum word count**, or both. The portal checks these limits at submission time.
+
+    Word count validation messages follow this pattern:
+    - Too short: "This response is too short. You are N word(s) below the minimum word count."
+    - Too long: "This response is too long. You are N word(s) above the maximum word count."
+  </Accordion>
+  <Accordion title="Multiple choice">
+    A set of options where you select exactly one answer.
+  </Accordion>
+  <Accordion title="Multiple select">
+    A set of options where you can select more than one answer.
+  </Accordion>
+  <Accordion title="File upload">
+    A field that accepts an uploaded file, such as a resume or portfolio.
+  </Accordion>
+  <Accordion title="Role select">
+    A special question that controls which role-specific sections appear in your form. See [Selecting your roles](#selecting-your-roles) above.
+  </Accordion>
+</AccordionGroup>
+
+## Submitting your application
+
+When you reach the final section and click **Submit**, you are taken to a review screen (`/apply/submit/:formId`) that shows a read-only summary of your entire application.
+
+<Steps>
+  <Step title="Review every section">
+    The review screen displays all sections relevant to the roles you selected. Each section has an **Edit this section** link that navigates back to that section if you need to make changes.
+  </Step>
+  <Step title="Check the due date">
+    The submission deadline is displayed on the Overview page. The portal enforces the deadline server-side — submissions after the due date are rejected with the message "Submission deadline has passed."
+  </Step>
+  <Step title="Click Submit">
+    Click the **Submit** button at the bottom of the review screen. The portal runs full validation on your responses before accepting the submission.
+  </Step>
+  <Step title="Resolve any validation errors">
+    If there are problems with your application, the portal highlights the affected questions. Common errors include:
+    - A required question was left blank.
+    - A long-answer response is below the minimum or above the maximum word count.
+    - No role was selected.
+
+    Fix each flagged question and click **Submit** again.
+  </Step>
+  <Step title="Confirmation">
+    A successful submission redirects you to `/apply/success`. Your application status changes to `submitted` and you will be able to track it on the status page.
+  </Step>
+</Steps>
+
+## What happens after submission
+
+On the server, a successful submission does two things:
+
+1. Your `ApplicationResponse` document is updated with `status: "submitted"` and a `dateSubmitted` timestamp.
+2. A separate `InternalApplicationStatus` record is created for **each role** you applied for, with an initial `ReviewStatus` of `under-review`. These records drive the status tracking you see as an applicant.
+
+<Note>
+  Once submitted, you cannot edit your application. If you need to make changes, contact your club administrator before the deadline passes.
+</Note>

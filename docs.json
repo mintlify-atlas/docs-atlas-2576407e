@@ -1,122 +1,95 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Hack4Impact Application Portal",
+  "theme": "almond",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#1d70bd",
+    "light": "#83d3cc"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/b5038ac3-7e96-4e9e-9928-8d041c1ac07c.png",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/Hack4Impact-UMD/app-portal"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/Hack4Impact-UMD/app-portal"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "User Guide",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Overview",
             "pages": [
               "index",
-              "quickstart",
-              "development"
+              "user-roles"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Applicants",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "applicants/getting-started",
+              "applicants/submitting-application",
+              "applicants/tracking-status",
+              "applicants/decisions"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Reviewers",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "reviewers/dashboard",
+              "reviewers/reviewing-applications",
+              "reviewers/conducting-interviews"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Admin",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "admin/overview",
+              "admin/form-builder",
+              "admin/rubric-builder",
+              "admin/managing-users",
+              "admin/review-pipeline"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "Developer Guide",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Getting Started",
             "pages": [
-              "api-reference/introduction"
+              "development/local-setup",
+              "development/firebase-emulators",
+              "development/project-structure"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Architecture",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "development/data-model",
+              "development/authentication",
+              "development/data-fetching"
+            ]
+          },
+          {
+            "group": "Backend API",
+            "pages": [
+              "api/application",
+              "api/review",
+              "api/interview",
+              "api/grading",
+              "api/status-auth"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

@@ -1,0 +1,65 @@
+---
+title: "Admin panel overview for super reviewers"
+description: "A reference for the admin panel at /admin, covering the four dashboards super reviewers use to control the full recruitment season."
+---
+
+The admin panel is the command centre for running a Hack4Impact-UMD recruitment cycle. Only users with the `super-reviewer` permission role can access it. When you navigate to `/admin`, the home page greets you with a list of every application form sorted by semester and due date, a link to user management, and shortcuts for uploading rubrics.
+
+From the home page you can reach the four main areas of the admin toolset: the Form Builder for authoring application forms, the Rubric Builder for configuring scoring criteria, User Management for assigning roles, and the Review Pipeline dashboards for tracking applicants through every stage of selection.
+
+## Permission model
+
+Only accounts with `PermissionRole.SuperReviewer` (`"super-reviewer"`) can reach the routes under `/admin/dor/`. Board members (`PermissionRole.Board`) share a narrower dashboard at `/admin/board/` and can view applications only for their assigned roles.
+
+## Recruitment season workflow
+
+A typical season follows this sequence:
+
+<Steps>
+  <Step title="Create and publish a form">
+    Build the application form in the Form Builder and upload it via `POST /application/forms`. Toggle `isActive` to `true` to open applications.
+  </Step>
+  <Step title="Configure rubrics">
+    Upload application and interview rubrics in the Rubric Builder. Rubric `scoreKey` values must match the `scoreWeights` defined on the form.
+  </Step>
+  <Step title="Receive and review applications">
+    As submissions arrive, use the Review Pipeline dashboard to assign reviewers, track `ReviewStatus`, and promote qualified applicants.
+  </Step>
+  <Step title="Manage users">
+    Promote reviewers and board members, set role preferences, and create internal applicant records for existing club members.
+  </Step>
+  <Step title="Release decisions">
+    Once every applicant has a final status, set `decisionsReleased` to `true` on the form. Applicants can then see their outcome.
+  </Step>
+</Steps>
+
+## Admin panel sections
+
+<CardGroup cols={2}>
+  <Card title="Form builder" icon="file-pen" href="/admin/form-builder">
+    Create and edit application forms using the JSON editor with live preview. Manage sections, question types, role gating, and score weights.
+  </Card>
+  <Card title="Rubric builder" icon="list-check" href="/admin/rubric-builder">
+    Configure application and interview rubrics for each applicant role. Preview scoring criteria and upload to Firestore in a single transaction.
+  </Card>
+  <Card title="Managing users" icon="users" href="/admin/managing-users">
+    Assign permission roles, set reviewer preferences, create internal applicants, and deactivate accounts.
+  </Card>
+  <Card title="Review pipeline" icon="chart-gantt" href="/admin/review-pipeline">
+    Track every applicant through review, qualified status, interviews, and final decisions across all dashboard tabs.
+  </Card>
+</CardGroup>
+
+## Form list actions
+
+From the home page form list, each row exposes a set of actions (locked behind a safety toggle to prevent accidental edits):
+
+| Action | Description |
+|---|---|
+| Toggle active | Enables or disables the form for applicants |
+| Edit form | Opens the Form Builder at `/admin/dor/form-builder/:formId` |
+| Edit rubrics | Opens the Rubric Builder at `/admin/dor/rubric-builder/:formId` |
+| Duplicate form | Creates a copy of the form for a new semester |
+| Change due date | Updates the submission deadline without re-uploading the full form |
+
+A mail icon next to each form indicates whether `decisionsReleased` is `true` (open envelope) or `false` (closed envelope).

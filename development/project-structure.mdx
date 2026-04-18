@@ -1,0 +1,111 @@
+---
+title: "Application Portal project structure"
+description: "A guide to the app-portal monorepo layout — frontend src directories by role, backend functions structure, route files, and Firebase configuration."
+---
+
+The app-portal repository is a monorepo with a `frontend` package and a `backend` package sitting alongside a set of Firebase configuration files at the root. Understanding where things live makes it easier to navigate the codebase and know where to add new code.
+
+## Root layout
+
+```
+app-portal/
+├── frontend/               # React/Vite application
+├── backend/                # Firebase Cloud Functions
+├── firebase.json           # Emulator and deploy configuration
+├── firestore.rules         # Firestore security rules
+├── firestore.indexes.json  # Firestore composite indexes
+├── storage.rules           # Cloud Storage security rules
+└── cors.json               # CORS configuration
+```
+
+## Frontend
+
+The frontend lives in `frontend/src/`. Each subdirectory has a clear, single responsibility.
+
+```
+frontend/
+├── public/
+└── src/
+    ├── components/
+    ├── config/
+    ├── contexts/
+    ├── hooks/
+    ├── lib/
+    ├── pages/
+    │   ├── applicant/
+    │   ├── reviewer/
+    │   ├── board/
+    │   └── super-reviewer/
+    ├── services/
+    ├── types/
+    └── utils/
+```
+
+| Directory      | Purpose                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| `components/`  | Reusable React components shared across multiple pages                                      |
+| `config/`      | Firebase client initialization and React Query `QueryClient` configuration                  |
+| `contexts/`    | React contexts used for global state management (e.g., auth, form state)                    |
+| `hooks/`       | Custom React hooks that encapsulate reusable stateful logic                                  |
+| `lib/`         | Low-level utility functions (e.g., `cn` class-name helpers from shadcn/ui)                  |
+| `pages/`       | Top-level routed page components, organized by user role                                    |
+| `services/`    | Functions that call backend API endpoints, abstracting HTTP and Firestore interactions       |
+| `types/`       | Shared TypeScript type definitions — `types.ts` for domain types, `formBuilderTypes.ts` for the form builder |
+| `utils/`       | Miscellaneous utility functions that do not fit into `lib/`                                 |
+
+### Pages by role
+
+The `pages/` directory is organized by the user role that each section serves, matching the `PermissionRole` enum in `types.ts`:
+
+- `applicant/` — application flow pages (overview, form, submit, revisit, status, decision)
+- `reviewer/` — reviewer dashboard, application review, and interview pages
+- `board/` — board member dashboards for all applications and interviews
+- `super-reviewer/` — admin home, form builder, rubric builder, user role management, and full pipeline dashboards
+
+## Backend
+
+The backend lives in `backend/functions/src/`. TypeScript source is compiled to `backend/functions/lib/` before the emulators or a deploy can run it.
+
+```
+backend/
+└── functions/
+    ├── src/
+    │   ├── middleware/
+    │   ├── models/
+    │   ├── routes/
+    │   ├── types/
+    │   └── utils/
+    └── lib/
+```
+
+| Directory      | Purpose                                                                                          |
+| -------------- | ------------------------------------------------------------------------------------------------ |
+| `middleware/`  | Express middleware for authentication verification and request validation                        |
+| `models/`      | Data model definitions used across routes                                                        |
+| `routes/`      | Express route handlers, one file per domain area                                                 |
+| `types/`       | TypeScript type definitions shared across the backend                                            |
+| `utils/`       | Utility functions, including Cloud Tasks queue helpers                                           |
+| `lib/`         | Compiled JavaScript output — do not edit directly                                                |
+
+### API route files
+
+Each file in `routes/` maps to a distinct area of the API:
+
+| File               | Responsibility                                       |
+| ------------------ | ---------------------------------------------------- |
+| `application.ts`   | Application CRUD and form response management        |
+| `auth.ts`          | Authentication and user account operations           |
+| `grading.ts`       | Engineering assessment grading via the Professor integration |
+| `interview.ts`     | Interview scheduling and score submission            |
+| `review.ts`        | Application review and rubric scoring                |
+| `status.ts`        | Application status transitions and decision releases |
+
+## Firebase configuration
+
+The `firebase.json` file at the root configures both the emulator suite and production deploys. Key sections include:
+
+- **`emulators`** — defines the ports for Auth (9099), Functions (5001), Firestore (8080), Database (9000), Hosting (5000), and Storage (9199), and enables the emulator UI
+- **`functions`** — points to `backend/functions` as the Cloud Functions source and specifies `predeploy` steps (install, lint, build)
+- **`hosting`** — serves `frontend/dist` and rewrites all routes to `index.html` for client-side routing
+- **`firestore`** — references `firestore.rules` and `firestore.indexes.json`
+- **`storage`** — references `storage.rules`

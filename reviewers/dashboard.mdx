@@ -1,0 +1,111 @@
+---
+title: "Reviewer dashboard overview"
+description: "Navigate your reviewer dashboard to see assigned applications and interviews, filter by status, and understand how role preferences shape your assignments."
+---
+
+When you log in as a reviewer, the portal redirects you to the admin area at `/admin`. Your work is centered in the reviewer dashboard, accessible at `/admin/reviewer/dashboard/:formId/apps`. The dashboard groups everything you need into two tabs — **Assigned Applications** and **Assigned Interviews** — with a shared search bar to filter across either list.
+
+## Dashboard layout
+
+The reviewer dashboard is a two-tab shell rendered by `ReviewerDashboardShell`. Both tabs share the same search input; whatever you type filters the table currently in view.
+
+<CardGroup cols={2}>
+  <Card title="Assigned Applications" icon="file-text" href="/reviewers/reviewing-applications">
+    All applications assigned to you for the active form. Shows total count, reviewed count, and pending count.
+  </Card>
+  <Card title="Assigned Interviews" icon="message-square" href="/reviewers/conducting-interviews">
+    All interviews assigned to you. Shows total count, completed count, and pending count.
+  </Card>
+</CardGroup>
+
+The tab links resolve to:
+
+- `/admin/reviewer/dashboard/:formId/apps` — applications tab
+- `/admin/reviewer/dashboard/:formId/interviews` — interviews tab
+
+## Status summary cards
+
+Each tab opens with three clickable summary cards. Clicking a card filters the table to that subset.
+
+**Applications tab**
+
+| Card | Color | What it shows |
+| --- | --- | --- |
+| Total Applications | Blue | Every `AppReviewAssignment` for your user ID |
+| Reviewed | Green | Assignments where a submitted `ApplicationReviewData` exists |
+| Pending | Red | Assignments with no submitted review yet |
+
+**Interviews tab**
+
+| Card | Color | What it shows |
+| --- | --- | --- |
+| Interviews | Blue | Every `InterviewAssignment` for your user ID |
+| Completed | Green | Assignments where a submitted `ApplicationInterviewData` exists |
+| Pending | Red | Assignments with no submitted interview yet |
+
+## How assignments reach you
+
+Assignments are created by admins (board members or super reviewers) and stored as typed objects in Firestore. Each `AppReviewAssignment` links your reviewer ID to a specific submitted application:
+
+```typescript types.ts
+export type AppReviewAssignment = {
+  id: string;
+  assignmentType: "review";
+  formId: string;
+  reviewerId: string;
+  applicantId: string;
+  applicationResponseId: string; // the submitted application assigned for review
+  forRole: ApplicantRole;
+};
+```
+
+Interview assignments follow the same shape, with `assignmentType: "interview"` and `interviewerId` in place of `reviewerId`:
+
+```typescript types.ts
+export type InterviewAssignment = {
+  id: string;
+  assignmentType: "interview";
+  formId: string;
+  interviewerId: string;
+  applicantId: string;
+  applicationResponseId: string;
+  forRole: ApplicantRole;
+};
+```
+
+## Role preferences
+
+Your `ReviewerUserProfile` stores an `applicantRolePreferences` array. Admins use this to decide which applications to assign to you — reviewers are typically assigned applications for the roles they prefer to review.
+
+```typescript types.ts
+export interface ReviewerUserProfile extends IUserProfile {
+  role: PermissionRole.Reviewer;
+  applicantRolePreferences: ApplicantRole[];
+}
+```
+
+<Info>
+  Role preferences are set by an admin when your account is configured. You cannot change them yourself. If your preferences are incorrect, contact a super reviewer.
+</Info>
+
+The supported `ApplicantRole` values are:
+
+```typescript formBuilderTypes.ts
+export enum ApplicantRole {
+  Bootcamp = "bootcamp",
+  Engineer = "engineer",
+  Designer = "designer",
+  Product = "product",
+  TechLead = "tech-lead",
+  SocialMedia = "social-media-manager",
+  OutreachCoord = "outreach-coordinator",
+}
+```
+
+## Searching and filtering
+
+Use the search bar at the top right of the dashboard shell to search across applicant names. The search applies to whichever tab is active. You can combine search with a status filter (All / Reviewed / Pending) by clicking the summary cards.
+
+<Tip>
+  Click the active summary card again to deselect the filter and return to the full list.
+</Tip>

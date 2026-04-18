@@ -1,0 +1,218 @@
+---
+title: "Data fetching patterns with TanStack Query"
+description: "Use TanStack Query in the app-portal: design query keys, build reusable hooks, handle loading and error states, and write mutations with cache invalidation."
+---
+
+The app-portal uses [TanStack Query](https://tanstack.com/query/latest) (also called React Query) for all data fetching. Traditional `useEffect`-based fetching is error-prone: it's easy to forget loading states, miss error handling, or trigger unnecessary re-fetches. TanStack Query handles all of that automatically, including caching, automatic retries, and cache invalidation. Whenever you need to fetch data in a component you're writing, use TanStack Query unless you have a specific reason not to.
+
+## useQuery basics
+
+The primary hook is `useQuery`. Its two required parameters are `queryKey` and `queryFn`:
+
+```typescript
+const { data, isPending, isError, error } = useQuery<UserProfile[]>({
+  queryKey: ["applicants"],
+  queryFn: getAllApplicants,
+});
+```
+
+| Return value | Type | Description |
+|---|---|---|
+| `data` | `T \| undefined` | The result of the query function once it resolves. |
+| `isPending` | `boolean` | `true` while the query is still in flight. |
+| `isError` | `boolean` | `true` if the query threw an error. |
+| `error` | `Error \| null` | The thrown error, if any. |
+
+## Query key design
+
+The query key is a unique array that identifies the cached data for this query. TanStack Query uses it internally to cache results and prevent redundant requests. Choose keys carefully: reusing a key that another query already uses will return the wrong cached data.
+
+For queries with parameters, encode those parameters in the key array:
+
+```typescript
+const { data, isPending, isError } = useQuery<UserProfile>({
+  queryKey: ["profile", uid], // "profile" + specific UID
+  queryFn: async () => {
+    return await getUserById(uid);
+  },
+});
+```
+
+Calling this query for different UIDs produces separate cache entries because each has a distinct `queryKey`. The convention used throughout the codebase is to put a descriptive noun first (e.g., `"profile"`, `"applicants"`, `"form"`) and then add parameters as additional elements.
+
+Examples from the codebase:
+
+```typescript
+queryKey: ["applicants"]                           // all applicants
+queryKey: ["applicant", id]                        // one applicant by ID
+queryKey: ["form", "all"]                          // all application forms
+queryKey: ["form", formId]                         // one form by ID
+queryKey: ["form", "active"]                       // the currently active form
+queryKey: ["responses", "user", user?.id]          // a user's own responses
+queryKey: ["review-data", "id", reviewDataId]      // one review data document
+queryKey: ["review-data", "reviewer", formId, reviewerId] // reviews by reviewer
+```
+
+## Wrapping queries in custom hooks
+
+When the same query is needed in more than one component, wrap the `useQuery` call in a custom hook with a descriptive name. This keeps components clean and makes the query reusable:
+
+```typescript
+// hooks/useApplicants.ts
+export function useApplicants() {
+  return useQuery<ApplicantUserProfile[]>({
+    queryKey: ["applicants"],
+    queryFn: getAllApplicants,
+  });
+}
+
+export function useApplicant(id: string) {
+  return useQuery<ApplicantUserProfile>({
+    queryKey: ["applicant", id],
+    queryFn: () => getApplicantById(id),
+  });
+}
+```
+
+```typescript
+// hooks/useProfile.ts
+export function useProfile(uid: string) {
+  return useQuery<UserProfile>({
+    queryKey: ["profile", uid],
+    queryFn: async () => {
+      return await getUserById(uid);
+    },
+  });
+}
+```
+
+The hooks directory (`frontend/src/hooks/`) contains a hook file for each major data domain: `useApplicants`, `useApplicationForm`, `useApplicationResponses`, `useReviewData`, `useReviewers`, `useRubrics`, and more. Check there before writing a new `useQuery` call — the hook you need may already exist.
+
+## Using custom hooks in components
+
+Import the hook and handle the three possible states — loading, error, and success — at the top of your component before rendering data:
+
+```tsx
+import { useApplicants } from "../../hooks/useApplicants";
+
+export default function AdminPlaceholderPage() {
+  const { data: applicants, isPending, error } = useApplicants();
+
+  if (isPending) return <p>Loading...</p>;
+  if (error) return <p>Error: {error.message}</p>;
+
+  return (
+    <div className="p-4">
+      <h1>All Applicants:</h1>
+      <ul>
+        {applicants?.map((applicant) => (
+          <li key={applicant.id}>
+            {applicant.firstName} (ID: {applicant.id})
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+Check `isPending` first. While `isPending` is `true`, `data` is `undefined`, so rendering data directly without this check will throw. After the loading check, handle `error` before assuming `data` is populated.
+
+## Conditional queries
+
+Some queries depend on data that isn't available immediately — for example, a user ID that comes from the auth context. Use the `enabled` option to prevent the query from running until its dependencies are ready:
+
+```typescript
+export function useMyApplicationResponses() {
+  const { user, isAuthed, isLoading } = useAuth();
+
+  return useQuery<ApplicationResponse[]>({
+    queryKey: ["responses", "user", user?.id],
+    enabled: !isLoading && isAuthed, // only run when auth state is resolved
+    queryFn: () => getApplicationResponses(user!.id),
+    initialData: [],
+  });
+}
+```
+
+When `enabled` is `false`, the query stays in a `pending` state without making any network request.
+
+## Mutations
+
+Use `useMutation` when you need to create, update, or delete data. Unlike `useQuery`, mutations are triggered manually by calling the returned `mutate` or `mutateAsync` function. After a successful mutation, call `queryClient.invalidateQueries` to tell TanStack Query to refetch any related queries so the UI stays in sync.
+
+```typescript
+export const useUploadApplicationForm = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ form, token }: { form: ApplicationForm; token: string }) =>
+      createApplicationForm(form, token),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["form", "all"] });
+    },
+  });
+};
+```
+
+For mutations that update frequently (such as reviewer scores), the codebase uses optimistic updates to apply changes to the cache immediately before the server confirms, then rolls back on error:
+
+```typescript
+export function useUpdateReviewData(reviewDataId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (update: Partial<Omit<ApplicationReviewData, "id">>) => {
+      await updateReviewData(reviewDataId, update);
+    },
+    onMutate: async (newData) => {
+      // cancel in-flight refetches to avoid overwriting the optimistic update
+      await queryClient.cancelQueries({ queryKey: ["review-data", "id", reviewDataId] });
+
+      const previousData = queryClient.getQueryData<ApplicationReviewData>([
+        "review-data", "id", reviewDataId,
+      ]);
+
+      // apply the update immediately to the cache
+      queryClient.setQueryData<ApplicationReviewData>(
+        ["review-data", "id", reviewDataId],
+        (old) => {
+          if (!old) return undefined;
+          return { ...old, ...newData };
+        },
+      );
+
+      return { previousData }; // returned as context for onError
+    },
+    onError: (_err, _newData, context) => {
+      // roll back to the snapshot taken before the mutation
+      queryClient.setQueryData(["review-data", "id", reviewDataId], context?.previousData);
+    },
+    onSettled: () => {
+      // always refetch after the mutation settles to ensure consistency
+      queryClient.invalidateQueries({ queryKey: ["review-data", "id", reviewDataId] });
+    },
+  });
+}
+```
+
+## QueryClient setup
+
+The `QueryClient` instance is created once in `frontend/src/config/query.ts` and provided to the entire app via `QueryClientProvider`. Avoid creating additional `QueryClient` instances.
+
+```typescript
+import { QueryClient } from "@tanstack/react-query";
+
+export const queryClient = new QueryClient();
+
+export async function clearQueryCache() {
+  await queryClient.cancelQueries();
+  await queryClient.invalidateQueries();
+  await queryClient.resetQueries();
+}
+```
+
+`clearQueryCache` is called during logout to ensure stale data from the previous session does not persist in the cache when a different user signs in.
+
+<Tip>
+  Read the [TanStack Query documentation](https://tanstack.com/query/latest) for advanced topics like prefetching, infinite queries, and the devtools panel, which shows the current cache state in the browser.
+</Tip>

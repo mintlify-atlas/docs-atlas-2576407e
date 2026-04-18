@@ -1,0 +1,249 @@
+---
+title: "Authentication and role-based access control"
+description: "How Firebase Auth ID tokens authenticate API requests, how isAuthenticated and hasRoles middleware protect routes, and how RequireAuth guards pages."
+---
+
+The app-portal uses Firebase Authentication for identity and a two-layer middleware system on the backend to enforce both authentication and role-based access control. On the frontend, an `AuthProvider` context and a `RequireAuth` component guard routes before they render.
+
+## How authentication works
+
+When a user signs in, Firebase issues a signed ID token (a JWT). The frontend attaches that token to every protected API request in the `Authorization` header:
+
+```
+Authorization: Bearer <Firebase ID Token>
+```
+
+The backend validates the token using the Firebase Admin SDK before any handler runs.
+
+## Backend middleware
+
+Two middleware functions in `backend/functions/src/middleware/authentication.ts` handle authentication and authorization.
+
+### isAuthenticated
+
+`isAuthenticated` extracts the ID token from the `Authorization: Bearer` header (or from the `__session` cookie), verifies it with the Firebase Admin SDK, and attaches the decoded token to `req.token`. It also rejects requests from users whose email has not yet been verified.
+
+```typescript
+export async function isAuthenticated(req: Request, res: Response, next: NextFunction) {
+  // Expects: Authorization: Bearer <Firebase ID Token>
+  if ((!req.headers.authorization || !req.headers.authorization.startsWith("Bearer ")) &&
+    !(req.cookies && req.cookies.__session)) {
+    res.status(403).send("Unauthorized");
+    return;
+  }
+
+  let idToken;
+  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
+    idToken = req.headers.authorization.split("Bearer ")[1];
+  } else if (req.cookies) {
+    idToken = req.cookies.__session;
+  } else {
+    res.status(403).send("Unauthorized");
+    return;
+  }
+
+  try {
+    const decodedIdToken = await admin.auth().verifyIdToken(idToken);
+
+    if (!decodedIdToken.email_verified) {
+      res.status(403).send("Email not verified!");
+      return;
+    }
+
+    req.token = decodedIdToken; // decoded token is now available to all downstream handlers
+    next();
+  } catch (error) {
+    res.status(403).send("Unauthorized");
+  }
+}
+```
+
+After `isAuthenticated` runs, every downstream middleware and handler can access `req.token.uid` to identify the caller without re-validating the token.
+
+### hasRoles
+
+`hasRoles` takes an array of allowed roles, looks up the caller's Firestore `users` document, and calls `next()` only if the user's `role` field matches one of the allowed values. It must be placed after `isAuthenticated` in the middleware chain because it reads `req.token`.
+
+```typescript
+export function hasRoles(roles: UserRole[]) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.token) {
+      res.status(403).send("Unauthorized");
+      return;
+    }
+
+    const user = await getUserById(req.token.uid);
+
+    if (!user) {
+      res.status(403).send("Unauthorized");
+      return;
+    }
+
+    if (roles.includes(user.role)) {
+      next();
+    } else {
+      res.status(403).send("Unauthorized");
+    }
+  };
+}
+```
+
+### Middleware usage pattern
+
+Protected routes compose the middleware as an array before the handler:
+
+```typescript
+// Requires a valid Firebase ID token and the "reviewer" or "super-reviewer" role
+router.post(
+  "/review",
+  [isAuthenticated, hasRoles(["reviewer", "super-reviewer"]), validateSchema(reviewSchema)],
+  async (req: Request, res: Response) => { ... }
+);
+
+// Requires only a valid Firebase ID token (no role restriction)
+router.post(
+  "/update",
+  [isAuthenticated, validateSchema(updateUserSchema)],
+  async (req: Request, res: Response) => { ... }
+);
+```
+
+<Note>
+  Always place `isAuthenticated` before `hasRoles` in the middleware array. `hasRoles` reads `req.token`, which `isAuthenticated` sets. Reversing the order will cause a `403` on every request.
+</Note>
+
+## PermissionRole values
+
+The four roles available in the system are defined in the `PermissionRole` enum:
+
+```typescript
+export enum PermissionRole {
+  SuperReviewer = "super-reviewer",
+  Reviewer = "reviewer",
+  Board = "board",
+  Applicant = "applicant",
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="applicant" icon="user">
+    Default role assigned at registration. Can submit and manage their own application responses.
+  </Card>
+  <Card title="reviewer" icon="star">
+    Can access assigned application responses and submit review scores for their preferred roles.
+  </Card>
+  <Card title="board" icon="briefcase">
+    Administrates specific roles. Can view all responses and review data for the roles they manage.
+  </Card>
+  <Card title="super-reviewer" icon="shield">
+    Full administrative access. Can manage roles, create internal applicants, and perform any action.
+  </Card>
+</CardGroup>
+
+Roles are stored as plain strings in Firestore (e.g., `"super-reviewer"`). The `PermissionRole` enum provides type-safe constants on the frontend and TypeScript backend. The string values in the `hasRoles(...)` call on the backend match these enum string values directly.
+
+## Email domain restriction
+
+The `POST /auth/register` endpoint enforces that only `umd.edu` and `hack4impact.org` addresses can create accounts:
+
+```typescript
+if (
+  !registerForm.email.trim().endsWith("umd.edu") &&
+  !registerForm.email.trim().endsWith("@hack4impact.org")
+) {
+  res.status(400).send("Only emails ending in umd.edu or hack4impact.org are allowed!");
+  return;
+}
+```
+
+Attempting to register with any other domain returns a `400` before a Firebase Auth user is created.
+
+## Frontend: AuthProvider context
+
+The `AuthContext` provides the current user's profile, auth state, and helper functions to every component in the tree.
+
+```typescript
+export type AuthProviderContext = {
+  user?: UserProfile;       // the resolved Firestore user document
+  token: () => Promise<string | undefined>; // retrieves the current Firebase ID token
+  isAuthed: boolean;        // true when the user is signed in and their profile is loaded
+  isLoading: boolean;       // true while auth state is still being resolved
+  login: (username: string, password: string) => Promise<UserProfile>;
+  logout: () => Promise<void>;
+  setUser: (newUserData: UserProfile) => void;
+};
+```
+
+Any component can read auth state through the `useAuth` hook:
+
+```typescript
+import { useAuth } from "../../hooks/useAuth";
+
+const { user, isAuthed, isLoading, token } = useAuth();
+```
+
+When the user calls `token()`, it retrieves the current Firebase ID token. Services that call authenticated backend endpoints use this to populate the `Authorization` header:
+
+```typescript
+const idToken = await auth.currentUser?.getIdToken();
+
+await axios.post(API_URL + "/auth/update", payload, {
+  headers: {
+    Authorization: `Bearer ${idToken}`,
+  },
+});
+```
+
+## Frontend: RequireAuth component
+
+`RequireAuth` wraps any route that should be inaccessible to unauthenticated users or users without a specific role. It redirects to `/login` when the user is not signed in and to `/verify` when their email is unverified.
+
+```typescript
+interface RequireAuthProps {
+  requireRoles?: PermissionRole[];
+  children: ReactNode;
+}
+
+export default function RequireAuth({ requireRoles, children }: RequireAuthProps) {
+  const { isLoading, isAuthed, user } = useAuth();
+  const location = useLocation();
+
+  if (isLoading) return <Loading />;
+
+  if (isAuthed) {
+    if (!auth.currentUser?.emailVerified) {
+      return <Navigate to="/verify" />;
+    }
+
+    if (requireRoles) {
+      if (requireRoles.includes(user!.role)) {
+        return children;
+      } else {
+        return <Navigate to="/login" replace state={{ path: location.pathname }} />;
+      }
+    } else {
+      return children;
+    }
+  } else {
+    return <Navigate to="/login" replace state={{ path: location.pathname }} />;
+  }
+}
+```
+
+Use `requireRoles` when a route should be visible only to specific roles:
+
+```tsx
+// Any authenticated user
+<RequireAuth>
+  <ApplicantDashboard />
+</RequireAuth>
+
+// Reviewer and above only
+<RequireAuth requireRoles={[PermissionRole.Reviewer, PermissionRole.Board, PermissionRole.SuperReviewer]}>
+  <ReviewDashboard />
+</RequireAuth>
+```
+
+<Warning>
+  The `requireRoles` prop on `RequireAuth` is a frontend convenience guard for navigation UX. Backend routes must always be independently protected with `isAuthenticated` and `hasRoles` middleware — never rely on the frontend guard alone.
+</Warning>
